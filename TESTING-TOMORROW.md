@@ -1,5 +1,7 @@
 # First scanner and scale test
 
+For an immediate USB hardware check, run `npm run scanner:test` and open **http://localhost:5015**. Click **Scanner input**, then scan one of the three displayed QR codes. A green result confirms that the exact test value arrived, including leading zeros. This standalone page does not connect to inventory or save counts. **Print QR sheet** is available if your scanner reads paper more reliably than a screen. It requires a 2D/QR-capable scanner in USB keyboard/HID mode.
+
 1. Double-click **Start Inventory.cmd**, or open **https://inventory.89.167.10.34.nip.io**. Sign in with the account in the private PC file `private/Inventory Login.txt`. Use this hosted app for all new weights and counts.
 2. Plug in the scanner. Set it to **USB keyboard / HID** mode with **Enter** or **Tab** after each scan, using its model-specific setup sheet.
 3. Click **Test scanner**. Scan a real product label. The app shows exactly what the scanner sent, its length, suffix, and match count. This mode saves no inventory counts.

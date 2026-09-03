@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "scanner:test": "node scripts/scanner-test.mjs",
     "import:catalog": "tsx scripts/import-catalog.ts",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
