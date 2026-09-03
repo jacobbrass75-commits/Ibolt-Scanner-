@@ -2,9 +2,15 @@
 
 A standalone inventory application for product weights, USB and camera scanning, bin labels, and physical count history. There are no writing, publishing, AI-generation, or scheduling components.
 
-## Start on this PC
+## Open the hosted inventory
 
-Double-click **Start Inventory.cmd**, or run:
+Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. Sign-in details are in the private local file `private/Inventory Login.txt`. The existing Hetzner server is reused at no added server cost. Named accounts, HTTPS, automatic restart, hourly verified backups, and a restore procedure are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Use the hosted database for all new measurements and counts. The former PC database is preserved; it does not synchronize automatically.
+
+## Local development
+
+To run an isolated local development copy:
 
 ```powershell
 npm ci
@@ -18,7 +24,7 @@ See [TESTING-TOMORROW.md](TESTING-TOMORROW.md) for the physical scanner and scal
 
 ## Inventory data
 
-The working database is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The current PC setup imported the available older local catalog and weight workbook. **It is not the newer Mac database described in the email.**
+The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The deployed catalog came from the available older local catalog and weight workbook. **It is not the newer Mac database described in the email.**
 
 - Local source database: 345 Shopify product records expanded into 492 stock items/variants.
 - Workbook: 144 rows, 137 unique parts; 64 merged by exact SKU and 73 added.
@@ -45,7 +51,7 @@ Back up first, then append `--apply` to import. The importer copies catalog fiel
 2. **Bins & labels:** assign a product, location, measured part weight, and measured empty-bin weight. No tare value is assumed. Multiple bins may share a SKU.
 3. **Scan & count:** scan a bin label or exact product barcode/SKU. Choose a bin when multiple match. Enter the total scale reading in ounces, pounds, grams, or kilograms.
 4. Preview, check the result, then save. The server computes `(total ounces - tare ounces) / part ounces`; every count stores its calibration snapshot, rounding mode, notes, operator, and timestamp.
-5. Export catalog, bins, and counts as CSV. **Back up inventory** creates and downloads a consistent SQLite snapshot. `npm run backup` saves one under `backups/`.
+5. Export catalog, bins, and counts as CSV. Administrators can use **Back up inventory** to download a consistent SQLite snapshot. The server also makes hourly verified backups; `npm run backup` uses `BACKUP_DIR` or a `backups/` directory beside the selected database.
 
 The scale is read manually; USB barcode scanners should use keyboard/HID mode with Enter or Tab as the suffix. Direct electronic-scale integration is not implemented. Camera scanning requires browser camera access and HTTPS when accessed remotely. Portable QR labels work inside the app and do not embed localhost. When `PUBLIC_ORIGIN` is configured, newly generated labels can link to the server directly.
 
@@ -71,6 +77,6 @@ npm run build
 
 `server/` contains the Express API, SQLite schema, inventory rules, and authentication. `client/` contains the React UI. `scripts/catalog.ts` reads the workbook and legacy catalog. Tests use isolated databases; browser QA must also use a disposable copy and a different port.
 
-## Future headless server
+## Headless server
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The application is prepared for a private HTTPS deployment; no server has been provisioned or deployed by this setup.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for service paths, account management, backups, recovery, and deployment verification. Recurring off-host backup and the newer Mac catalog transfer are still outstanding.

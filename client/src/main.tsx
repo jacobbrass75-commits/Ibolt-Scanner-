@@ -36,6 +36,11 @@ async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
     body: data ? JSON.stringify(data) : undefined,
   });
   if (!response.ok) {
+    if (response.status === 401)
+      window.location.assign(
+        "/login?returnTo=" +
+          encodeURIComponent(window.location.pathname + window.location.search),
+      );
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `Request failed (${response.status}).`);
   }
@@ -208,18 +213,26 @@ function App() {
     } | null>(null),
     [qr, setQr] = useState<Bin | null>(null);
   const [archive, setArchive] = useState<Bin | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+  const canEdit = status?.identity?.role !== "viewer" && !!status;
+  const isAdmin = status?.identity?.role === "admin";
   async function reload() {
     const [p, b, c, s] = await Promise.all([
       api<Product[]>("/products"),
       api<Bin[]>("/bins"),
-      api<Count[]>("/counts"),
+      api<{ items: Count[]; nextCursor: string | null; total: number }>(
+        "/counts",
+      ),
       api("/status"),
     ]);
     setProducts(p);
     setBins(b);
-    setCounts(c);
+    setCounts(c.items);
+    setNextCursor(c.nextCursor);
     setStatus(s);
     setLoading(false);
+    setConnected(true);
     setSelected((old) => (old ? b.find((x) => x.id === old.id) || null : null));
   }
   async function run(action: () => Promise<void>) {
@@ -242,6 +255,12 @@ function App() {
       setError(e.message);
       setLoading(false);
     });
+    const interval = window.setInterval(() => {
+      api("/health")
+        .then(() => setConnected(true))
+        .catch(() => setConnected(false));
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
   useEffect(() => {
     localStorage.setItem("inventory-operator", operator);
@@ -327,7 +346,11 @@ function App() {
         );
       } else if (result.bins.length === 1 && result.products.length <= 1)
         selectBin(result.bins[0]);
-      else if (result.products.length === 1 && result.bins.length === 0) {
+      else if (
+        result.products.length === 1 &&
+        result.bins.length === 0 &&
+        canEdit
+      ) {
         setBinEditor({ product: result.products[0] });
       } else if (result.products.length || result.bins.length)
         setLookup(result);
@@ -426,16 +449,32 @@ function App() {
         </nav>
         <div className="sidebar-note">
           <span className="dot" />
-          Local inventory workspace<p>Physical counts stay in this database.</p>
+          {status?.publicOrigin
+            ? "Hosted inventory workspace"
+            : "Local inventory workspace"}
+          <p>Physical counts stay in this database.</p>
+          {status?.identity?.authenticated && (
+            <>
+              <p>
+                {status.identity.displayName} · {status.identity.role}
+              </p>
+              <form action="/logout" method="post">
+                <button type="submit">Sign out</button>
+              </form>
+            </>
+          )}
           <small>Shopify quantities are unchanged.</small>
         </div>
         <button
           className="backup"
-          disabled={busy}
+          disabled={busy || !isAdmin}
           onClick={() =>
             run(async () => {
               const response = await fetch("/api/backup", { method: "POST" });
-              if (!response.ok) throw new Error("Backup failed.");
+              if (!response.ok) {
+                const body = await response.json().catch(() => ({}));
+                throw new Error(body.error || "Backup failed.");
+              }
               const url = URL.createObjectURL(await response.blob());
               const a = document.createElement("a");
               a.href = url;
@@ -460,9 +499,14 @@ function App() {
             <span className="dot" />
             {loading
               ? "Connecting…"
-              : status
+              : connected
                 ? "Database connected"
                 : "Connection unavailable"}
+            {!connected && !loading && (
+              <button onClick={() => run(reload)} disabled={busy}>
+                Reconnect
+              </button>
+            )}
           </span>
         </header>
         <main>
@@ -667,6 +711,7 @@ function App() {
                       {lookup.products.map((p) => (
                         <button
                           key={p.id}
+                          disabled={!canEdit}
                           onClick={() => {
                             setBinEditor({ product: p });
                             setLookup(null);
@@ -729,6 +774,7 @@ function App() {
                             );
                             if (p) setBinEditor({ product: p, bin: selected });
                           }}
+                          disabled={!canEdit}
                         >
                           Edit bin
                         </button>
@@ -805,7 +851,12 @@ function App() {
                       </Field>
                       <Field label="Counted by">
                         <input
-                          value={operator}
+                          value={
+                            status?.identity?.authenticated
+                              ? status.identity.displayName
+                              : operator
+                          }
+                          readOnly={!!status?.identity?.authenticated}
                           onChange={(e) => setOperator(e.target.value)}
                           placeholder="Your name"
                         />
@@ -848,7 +899,9 @@ function App() {
                     <button
                       className="primary wide"
                       onClick={() => calculate(true)}
-                      disabled={!preview || !!preview.count || !requestId}
+                      disabled={
+                        !preview || !!preview.count || !requestId || !canEdit
+                      }
                     >
                       <Check size={18} />
                       {preview?.count ? "Count saved" : "Save count"}
@@ -980,13 +1033,17 @@ function App() {
                         </td>
                         <td>
                           <div className="row-actions">
-                            <button onClick={() => setEditProduct(p)}>
+                            <button
+                              disabled={!canEdit}
+                              onClick={() => setEditProduct(p)}
+                            >
                               Set weight
                             </button>
                             <button
                               className="icon"
                               title="Create bin"
                               aria-label={`Create bin for ${p.sku}`}
+                              disabled={!canEdit}
                               onClick={() => setBinEditor({ product: p })}
                             >
                               <Plus size={17} />
@@ -1056,11 +1113,13 @@ function App() {
                           const p = products.find((p) => p.id === b.productId);
                           if (p) setBinEditor({ product: p, bin: b });
                         }}
+                        disabled={!canEdit}
                       >
                         Edit
                       </button>
                       <button
                         className="text-button"
+                        disabled={!isAdmin}
                         onClick={() => setArchive(b)}
                       >
                         Archive
@@ -1090,7 +1149,7 @@ function App() {
           ) : (
             <section className="panel">
               <div className="toolbar">
-                <h2>{counts.length} saved counts</h2>
+                <h2>{status?.counts || 0} saved counts</h2>
                 <a className="button" href="/api/export/counts">
                   <Download size={16} />
                   Export counts
@@ -1146,11 +1205,29 @@ function App() {
                   </div>
                 )}
               </div>
+              {nextCursor && (
+                <button
+                  className="wide"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      const page = await api<{
+                        items: Count[];
+                        nextCursor: string | null;
+                        total: number;
+                      }>("/counts?before=" + encodeURIComponent(nextCursor));
+                      setCounts((old) => [...old, ...page.items]);
+                      setNextCursor(page.nextCursor);
+                    })
+                  }
+                >
+                  Load older counts
+                </button>
+              )}
             </section>
           )}
           <footer>
-            iBolt Inventory{" "}
-            <span>Inventory only · Manual scale entry · Local database</span>
+            iBolt Inventory <span>Inventory only · Manual scale entry</span>
           </footer>
         </main>
       </div>

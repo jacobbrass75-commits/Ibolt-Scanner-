@@ -30,6 +30,7 @@ export interface Bin {
   updatedAt: string;
 }
 export interface Count {
+  actorId: string;
   id: string;
   requestId: string;
   binId: string;

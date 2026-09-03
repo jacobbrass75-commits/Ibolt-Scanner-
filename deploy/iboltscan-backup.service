@@ -1,0 +1,19 @@
+[Unit]
+Description=Verified online inventory backup
+After=iboltscan.service
+
+[Service]
+Type=oneshot
+User=iboltscan
+Group=iboltscan
+WorkingDirectory=/opt/iboltscan/current
+EnvironmentFile=/etc/iboltscan/app.env
+ExecStart=/opt/iboltscan/node/bin/node /opt/iboltscan/current/dist/scripts/backup.js
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/iboltscan /var/backups/iboltscan
+MemoryMax=256M
+TimeoutStartSec=120

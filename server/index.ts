@@ -4,25 +4,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase } from "./db";
 import { createApp } from "./app";
+import { loadConfig } from "./config";
+import { existsSync } from "node:fs";
 
-const host = process.env.HOST || "127.0.0.1";
-const port = Number(process.env.PORT || 5001);
-if (
-  !["127.0.0.1", "::1", "localhost"].includes(host) &&
-  (!process.env.ACCESS_PASSWORD || !process.env.PUBLIC_ORIGIN)
-)
-  throw new Error("Remote hosting requires ACCESS_PASSWORD and PUBLIC_ORIGIN.");
-if (
-  process.env.PUBLIC_ORIGIN &&
-  new URL(process.env.PUBLIC_ORIGIN).protocol !== "https:"
-)
-  throw new Error("PUBLIC_ORIGIN must use HTTPS.");
-const db = openDatabase();
-const app = createApp(db, {
-  password: process.env.ACCESS_PASSWORD,
-  publicOrigin: process.env.PUBLIC_ORIGIN,
-});
+const config = loadConfig();
+const { host, port } = config;
+if (config.mode === "production" && !existsSync(config.databasePath))
+  throw new Error(
+    "Production database is missing. Restore a verified inventory backup before starting.",
+  );
+const db = openDatabase(config.databasePath);
 const production = fileURLToPath(import.meta.url).endsWith(".js");
+const app = createApp(db, { ...config, development: !production });
 if (production) {
   const publicPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -43,15 +36,28 @@ if (production) {
 const server = app.listen(port, host, () =>
   console.log(`iBolt Inventory is ready at http://${host}:${port}`),
 );
+server.requestTimeout = 30000;
+server.headersTimeout = 15000;
+server.keepAliveTimeout = 5000;
 server.on("error", (error) => {
   console.error(error.message);
   db.close();
   process.exit(1);
 });
+let closing = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
-  process.on(signal, () =>
+  process.on(signal, () => {
+    if (closing) return;
+    closing = true;
+    const timeout = setTimeout(() => {
+      server.closeAllConnections();
+      db.close();
+      process.exit(1);
+    }, 20000);
+    timeout.unref();
     server.close(() => {
+      clearTimeout(timeout);
       db.close();
       process.exit(0);
-    }),
-  );
+    });
+  });

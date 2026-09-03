@@ -1,0 +1,32 @@
+[Unit]
+Description=iBolt inventory service
+After=network.target
+
+[Service]
+Type=simple
+User=iboltscan
+Group=iboltscan
+WorkingDirectory=/opt/iboltscan/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/iboltscan/app.env
+ExecStart=/opt/iboltscan/node/bin/node /opt/iboltscan/current/dist/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/iboltscan /var/backups/iboltscan
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=64
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

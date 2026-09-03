@@ -1,4 +1,5 @@
 import type { Count } from "../shared/types";
+import { InventoryError } from "./errors";
 export function normalizeScan(raw: string): string {
   let code = raw
     .trim()
@@ -9,7 +10,8 @@ export function normalizeScan(raw: string): string {
     if (code.startsWith("{")) {
       try {
         const p = JSON.parse(code);
-        code = p.qrCode || p.code || p.bin || p.binId || code;
+        const candidate = p?.qrCode || p?.code || p?.bin || p?.binId;
+        if (typeof candidate === "string") code = candidate;
       } catch {}
     }
   }
@@ -49,7 +51,7 @@ export function calculate(
     tare < 0 ||
     part <= 0
   )
-    throw new Error(
+    throw new InventoryError(
       "Enter valid weights. Part weight must be greater than zero.",
     );
   const factors = {
@@ -61,7 +63,7 @@ export function calculate(
   const totalWeightOz = total * factors[unit];
   const difference = totalWeightOz - tare;
   if (difference < -1e-9)
-    throw new Error(
+    throw new InventoryError(
       "Total weight is below the empty bin weight. Check the scale or tare.",
     );
   const netWeightOz = Math.max(0, difference);
@@ -78,7 +80,7 @@ export function calculate(
         ? Math.ceil(stable)
         : Math.round(stable);
   if (!Number.isSafeInteger(quantity))
-    throw new Error(
+    throw new InventoryError(
       "Calculated count is too large. Check the units and part weight.",
     );
   return {

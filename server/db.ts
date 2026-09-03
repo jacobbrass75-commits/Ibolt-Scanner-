@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+export const SCHEMA_VERSION = 2;
 export function openDatabase(
   filename = process.env.DATABASE_PATH || "./data/inventory.sqlite",
 ) {
@@ -19,10 +20,41 @@ export function openDatabase(
       "Use import:catalog to copy inventory records into a NEW database. Do not run against a legacy database.",
     );
   }
+  const version = db.pragma("user_version", { simple: true }) as number;
+  if (version > SCHEMA_VERSION) {
+    db.close();
+    throw new Error(
+      `Database schema ${version} is newer than supported schema ${SCHEMA_VERSION}. Use the matching application release.`,
+    );
+  }
+  const productTable = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='products'",
+    )
+    .get();
+  if (
+    productTable &&
+    !(db.pragma("table_info(products)") as { name: string }[]).some(
+      (c) => c.name === "unitWeightOz",
+    )
+  ) {
+    db.close();
+    throw new Error(
+      "This is not an Iboltscan database. Use a separate inventory database.",
+    );
+  }
+  if (version > 0 && !productTable) {
+    db.close();
+    throw new Error(
+      "Inventory schema is incomplete. Restore a verified backup.",
+    );
+  }
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
-  db.exec(`
+  db.pragma("synchronous = FULL");
+  db.transaction(() => {
+    db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY, sku TEXT NOT NULL, title TEXT NOT NULL, barcode TEXT NOT NULL DEFAULT '',
       aliases TEXT NOT NULL DEFAULT '[]', category TEXT NOT NULL DEFAULT '',
@@ -52,8 +84,14 @@ export function openDatabase(
     CREATE TABLE IF NOT EXISTS imports (
       id INTEGER PRIMARY KEY, sourceFile TEXT NOT NULL, sourceHash TEXT NOT NULL UNIQUE, summary TEXT NOT NULL, createdAt TEXT NOT NULL
     );
-    PRAGMA user_version = 1;
   `);
+    if (version < 2) {
+      db.exec(
+        "ALTER TABLE counts ADD COLUMN actorId TEXT NOT NULL DEFAULT 'legacy'; ALTER TABLE audit ADD COLUMN actorId TEXT NOT NULL DEFAULT 'legacy';",
+      );
+    }
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  })();
   return db;
 }
 export type InventoryDatabase = ReturnType<typeof openDatabase>;

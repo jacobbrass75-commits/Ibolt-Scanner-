@@ -1,10 +1,13 @@
 import express from "express";
 import { z } from "zod";
-import { createHash, timingSafeEqual, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { once } from "node:events";
 import path from "node:path";
 import type { InventoryDatabase } from "./db";
 import { InventoryStore } from "./store";
+import { security, requireRole } from "./security";
+import type { AuthUser, Identity } from "./config";
+import { InventoryError } from "./errors";
+import { createBackup } from "./backups";
 
 const text = z.string().trim().max(2000);
 const positive = z.number().finite().positive().max(1e9);
@@ -23,67 +26,21 @@ export function csvCell(value: unknown) {
 }
 export function createApp(
   db: InventoryDatabase,
-  options: { password?: string; publicOrigin?: string } = {},
+  options: {
+    users?: AuthUser[];
+    password?: string;
+    publicOrigin?: string;
+    development?: boolean;
+    backupDir?: string;
+    now?: () => number;
+    maxFailures?: number;
+  } = {},
 ) {
   const app = express(),
     store = new InventoryStore(db);
   app.disable("x-powered-by");
-  app.use((req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Referrer-Policy", "same-origin");
-    const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
-      req.socket.remoteAddress || "",
-    );
-    const host = req.headers.host || "";
-    const allowedHost =
-      /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) ||
-      (options.publicOrigin && host === new URL(options.publicOrigin).host);
-    if (!allowedHost) {
-      res
-        .status(403)
-        .send("Unrecognized host. Configure PUBLIC_ORIGIN for this server.");
-      return;
-    }
-    if (!options.password && !local) {
-      res.status(403).send("Remote access requires ACCESS_PASSWORD.");
-      return;
-    }
-    if (options.password) {
-      const auth = req.headers.authorization || "";
-      const credentials = auth.startsWith("Basic ")
-        ? Buffer.from(auth.slice(6), "base64").toString()
-        : "";
-      const provided = credentials.slice(credentials.indexOf(":") + 1);
-      if (
-        !credentials.includes(":") ||
-        !timingSafeEqual(
-          createHash("sha256").update(provided).digest(),
-          createHash("sha256").update(options.password).digest(),
-        )
-      ) {
-        res.setHeader(
-          "WWW-Authenticate",
-          'Basic realm="iBolt Inventory", charset="UTF-8"',
-        );
-        res.status(401).send("Inventory sign-in required.");
-        return;
-      }
-    }
-    const origin = req.headers.origin;
-    const allowedOrigin = options.publicOrigin || `http://${host}`;
-    if (origin && origin !== allowedOrigin) {
-      res
-        .status(403)
-        .json({ error: "Requests must come from this inventory app." });
-      return;
-    }
-    if (req.headers["sec-fetch-site"] === "cross-site") {
-      res.status(403).end();
-      return;
-    }
-    next();
-  });
+  app.use("/login", express.urlencoded({ extended: false, limit: "2kb" }));
+  app.use(security(options));
   app.use(express.json({ limit: "200kb" }));
   app.use("/api", (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -100,6 +57,15 @@ export function createApp(
         next(e);
       }
     };
+  const actingStore = (res: express.Response) =>
+    new InventoryStore(db, (res.locals.identity as Identity).username);
+  app.get(
+    "/healthz",
+    route((_req, res) => {
+      db.prepare("SELECT 1").get();
+      res.json({ status: "ok" });
+    }),
+  );
   app.get("/api/health", (_req, res) =>
     res.json({ status: "ok", app: "iboltscan" }),
   );
@@ -107,15 +73,16 @@ export function createApp(
     const products = store.products();
     res.json({
       products: products.length,
+      identity: res.locals.identity,
       verified: products.filter((p) => p.weightStatus === "verified").length,
       needsWeight: products.filter(
         (p) => p.weightStatus === "missing" || p.weightStatus === "conflict",
       ).length,
       bins: store.bins().length,
-      counts: store.counts().length,
+      counts: store.countTotal(),
       imports: db
         .prepare(
-          "SELECT sourceFile,summary,createdAt FROM imports ORDER BY id DESC",
+          "SELECT sourceFile,summary,createdAt FROM imports ORDER BY id DESC LIMIT 20",
         )
         .all(),
       publicOrigin: options.publicOrigin || null,
@@ -124,9 +91,10 @@ export function createApp(
   app.get("/api/products", (_req, res) => res.json(store.products()));
   app.patch(
     "/api/products/:id",
+    requireRole("admin", "operator"),
     route((req, res) =>
       res.json(
-        store.updateProduct(
+        actingStore(res).updateProduct(
           req.params.id,
           z
             .object({
@@ -147,6 +115,7 @@ export function createApp(
   );
   app.post(
     "/api/bins",
+    requireRole("admin", "operator"),
     route((req, res) => {
       const input = z
         .object({
@@ -156,14 +125,15 @@ export function createApp(
         })
         .strict()
         .parse(req.body);
-      res.status(201).json(store.createBin(input));
+      res.status(201).json(actingStore(res).createBin(input));
     }),
   );
   app.patch(
     "/api/bins/:id",
+    requireRole("admin", "operator"),
     route((req, res) =>
       res.json(
-        store.updateBin(
+        actingStore(res).updateBin(
           req.params.id,
           z
             .object({
@@ -179,7 +149,8 @@ export function createApp(
   );
   app.delete(
     "/api/bins/:id",
-    route((req, res) => res.json(store.archiveBin(req.params.id))),
+    requireRole("admin"),
+    route((req, res) => res.json(actingStore(res).archiveBin(req.params.id))),
   );
   app.get(
     "/api/lookup",
@@ -204,48 +175,82 @@ export function createApp(
         })
         .strict()
         .parse(req.body);
-      res.json(store.calculate(input));
+      const identity = res.locals.identity as Identity;
+      if (input.save && identity.role === "viewer")
+        throw new InventoryError("Your account cannot save counts.", 403);
+      if (identity.authenticated) input.countedBy = identity.displayName;
+      res.json(actingStore(res).calculate(input));
     }),
   );
-  app.get("/api/counts", (_req, res) => res.json(store.counts()));
+  app.get(
+    "/api/counts",
+    route((req, res) => {
+      const query = z
+        .object({
+          limit: z.coerce.number().int().min(1).max(200).default(100),
+          before: z.string().uuid().optional(),
+        })
+        .strict()
+        .parse(req.query);
+      res.json(store.countPage(query.limit, query.before));
+    }),
+  );
   app.get(
     "/api/export/:kind",
-    route((req, res) => {
+    route(async (req, res) => {
       const kind = z
         .enum(["products", "bins", "counts"])
         .parse(req.params.kind);
-      const rows: any[] =
+      const rows: Iterable<any> =
         kind === "products"
           ? store.products().map(({ aliases, source, ...p }) => p)
           : kind === "bins"
             ? store.bins(true)
-            : store.counts();
-      const headers = rows.length ? Object.keys(rows[0]) : ["id"];
+            : store.exportCounts();
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="inventory-${kind}.csv"`,
       );
-      res
-        .type("text/csv")
-        .send(
-          "\uFEFF" +
-            [
-              headers.map(csvCell).join(","),
-              ...rows.map((r) => headers.map((k) => csvCell(r[k])).join(",")),
-            ].join("\r\n"),
-        );
+      res.type("text/csv");
+      let headers: string[] | undefined;
+      for (const row of rows) {
+        if (res.destroyed) return;
+        if (!headers) {
+          headers = Object.keys(row);
+          res.write("\uFEFF" + headers.map(csvCell).join(",") + "\r\n");
+        }
+        if (!res.write(headers.map((k) => csvCell(row[k])).join(",") + "\r\n"))
+          await once(res, "drain");
+      }
+      if (!headers) res.write('\uFEFF"id"\r\n');
+      res.end();
     }),
   );
+  let backupRunning = false;
+  let lastBackupAt = 0;
   app.post(
     "/api/backup",
+    requireRole("admin"),
     route(async (_req, res) => {
-      mkdirSync("backups", { recursive: true });
-      const file = path.resolve(
-        "backups",
-        `inventory-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.sqlite`,
-      );
-      await db.backup(file);
-      res.download(file);
+      if (backupRunning || Date.now() - lastBackupAt < 60000) {
+        res.setHeader("Retry-After", "60");
+        throw new InventoryError(
+          "A backup was just requested. Wait a minute before requesting another.",
+          429,
+        );
+      }
+      backupRunning = true;
+      try {
+        const result = await createBackup(
+          db,
+          options.backupDir || path.resolve("backups"),
+        );
+        lastBackupAt = Date.now();
+        res.setHeader("X-Backup-SHA256", result.manifest.sha256);
+        res.download(result.filename);
+      } finally {
+        backupRunning = false;
+      }
     }),
   );
   app.use("/api", (_req, res) =>
@@ -259,17 +264,31 @@ export function createApp(
       _next: express.NextFunction,
     ) => {
       if (error instanceof z.ZodError)
-        res
-          .status(400)
-          .json({
-            error: error.issues
-              .map((i) => `${i.path.join(".")}: ${i.message}`)
-              .join("; "),
-          });
-      else
-        res
-          .status(/not found/i.test(error.message) ? 404 : 400)
-          .json({ error: error.message || "Request failed." });
+        res.status(400).json({
+          error: error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; "),
+        });
+      else if (error instanceof InventoryError)
+        res.status(error.status).json({ error: error.message });
+      else if (error.type === "entity.parse.failed")
+        res.status(400).json({ error: "Invalid JSON request." });
+      else if (error.type === "entity.too.large")
+        res.status(413).json({ error: "Request is too large." });
+      else {
+        console.error(
+          "Inventory request failed",
+          error.code || error.name || "Error",
+        );
+        if (res.headersSent) {
+          res.destroy();
+          return;
+        }
+        res.status(error.code === "SQLITE_BUSY" ? 503 : 500).json({
+          error:
+            "The inventory service could not complete this request. Retry shortly; contact the administrator if it persists.",
+        });
+      }
     },
   );
   return app;

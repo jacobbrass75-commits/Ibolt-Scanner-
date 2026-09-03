@@ -5,6 +5,7 @@ import {
   openSync,
   closeSync,
   writeFileSync,
+  readFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,23 @@ import { config } from "dotenv";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 process.chdir(root);
 config({ path: path.join(root, ".env") });
+const hostedFile = path.join(root, "private", "hosted-url.txt");
+if (existsSync(hostedFile) && !process.argv.includes("--local")) {
+  const hosted = new URL(readFileSync(hostedFile, "utf8").trim());
+  if (hosted.protocol !== "https:" || hosted.username || hosted.password)
+    throw new Error(
+      "The hosted inventory address must use HTTPS without embedded credentials.",
+    );
+  console.log(`Inventory ready: ${hosted.origin}`);
+  const quotedOrigin = "'" + hosted.origin.replace(/'/g, "''") + "'";
+  if (process.platform === "win32" && !process.argv.includes("--no-browser"))
+    spawn(
+      "powershell.exe",
+      ["-NoProfile", "-Command", `Start-Process -FilePath ${quotedOrigin}`],
+      { detached: true, windowsHide: true, stdio: "ignore" },
+    ).unref();
+  process.exit(0);
+}
 const port = process.env.PORT || "5001";
 if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)
   throw new Error("PORT must be a number from 1 to 65535.");

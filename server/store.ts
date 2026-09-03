@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { InventoryDatabase } from "./db";
 import type { Product, Bin, Count, Calculation } from "../shared/types";
 import { calculate, normalizeScan } from "./domain";
+import { InventoryError } from "./errors";
 const nextTimestamp = (previous: string) =>
   new Date(Math.max(Date.now(), Date.parse(previous) + 1)).toISOString();
 
 export class InventoryStore {
-  constructor(public db: InventoryDatabase) {}
+  constructor(
+    public db: InventoryDatabase,
+    public actorId = "local-operator",
+  ) {}
   products(): Product[] {
     return (
       this.db
@@ -19,9 +23,15 @@ export class InventoryStore {
     }));
   }
   product(id: string): Product {
-    const p = this.products().find((p) => p.id === id);
-    if (!p) throw new Error("Product not found.");
-    return p;
+    const p = this.db
+      .prepare("SELECT * FROM products WHERE id=?")
+      .get(id) as any;
+    if (!p) throw new InventoryError("Product not found.", 404);
+    return {
+      ...p,
+      aliases: JSON.parse(p.aliases),
+      source: JSON.parse(p.source),
+    };
   }
   bins(archived = false): Bin[] {
     return this.db
@@ -34,13 +44,13 @@ export class InventoryStore {
     const b = this.db.prepare("SELECT * FROM bins WHERE id = ?").get(id) as
       | Bin
       | undefined;
-    if (!b) throw new Error("Bin not found.");
+    if (!b) throw new InventoryError("Bin not found.", 404);
     return b;
   }
   audit(kind: string, id: string, before: unknown, after: unknown) {
     this.db
       .prepare(
-        "INSERT INTO audit(kind,recordId,beforeValue,afterValue,createdAt) VALUES(?,?,?,?,?)",
+        "INSERT INTO audit(kind,recordId,beforeValue,afterValue,createdAt,actorId) VALUES(?,?,?,?,?,?)",
       )
       .run(
         kind,
@@ -48,6 +58,7 @@ export class InventoryStore {
         JSON.stringify(before),
         JSON.stringify(after),
         new Date().toISOString(),
+        this.actorId,
       );
   }
   updateProduct(
@@ -63,7 +74,10 @@ export class InventoryStore {
     return this.db.transaction(() => {
       const before = this.product(id);
       if (before.updatedAt !== input.expectedUpdatedAt)
-        throw new Error("This product changed. Reload it before saving.");
+        throw new InventoryError(
+          "This product changed. Reload it before saving.",
+          409,
+        );
       if (
         input.barcode &&
         this.products().some(
@@ -74,7 +88,7 @@ export class InventoryStore {
             ),
         )
       )
-        throw new Error(
+        throw new InventoryError(
           "This barcode belongs to another catalog item. Check the label before assigning it.",
         );
       this.db
@@ -144,9 +158,12 @@ export class InventoryStore {
     return this.db.transaction(() => {
       const b = this.bin(id);
       if (b.updatedAt !== input.expectedUpdatedAt)
-        throw new Error("This bin changed. Reload it before saving.");
+        throw new InventoryError(
+          "This bin changed. Reload it before saving.",
+          409,
+        );
       if (b.status !== "active")
-        throw new Error("Archived bins cannot be edited.");
+        throw new InventoryError("Archived bins cannot be edited.");
       this.db
         .prepare(
           "UPDATE bins SET binLabel=?,unitWeightOz=?,emptyBinWeightOz=?,location=?,notes=?,updatedAt=? WHERE id=?",
@@ -178,7 +195,8 @@ export class InventoryStore {
   lookup(raw: string) {
     const code = normalizeScan(raw),
       key = code.toLowerCase();
-    if (!code) throw new Error("Scan or enter a bin code, SKU, or barcode.");
+    if (!code)
+      throw new InventoryError("Scan or enter a bin code, SKU, or barcode.");
     const direct = this.bins().filter(
       (b) => b.qrCode.toLowerCase() === key || b.id.toLowerCase() === key,
     );
@@ -199,6 +217,45 @@ export class InventoryStore {
       .prepare("SELECT * FROM counts ORDER BY createdAt DESC, rowid DESC")
       .all() as Count[];
   }
+  countTotal(): number {
+    return (
+      this.db.prepare("SELECT count(*) AS total FROM counts").get() as {
+        total: number;
+      }
+    ).total;
+  }
+  *exportCounts(): Generator<Count> {
+    let before: string | undefined;
+    do {
+      const page = this.countPage(200, before);
+      yield* page.items;
+      before = page.nextCursor || undefined;
+    } while (before);
+  }
+  countPage(limit = 100, before?: string) {
+    const size = Math.min(Math.max(limit, 1), 200);
+    let cursor: { rowid: number } | undefined;
+    if (before) {
+      cursor = this.db
+        .prepare("SELECT rowid FROM counts WHERE id=?")
+        .get(before) as { rowid: number } | undefined;
+      if (!cursor)
+        throw new InventoryError(
+          "History cursor is no longer available. Reload history.",
+          400,
+        );
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM counts ${cursor ? "WHERE rowid < ?" : ""} ORDER BY rowid DESC LIMIT ?`,
+      )
+      .all(...(cursor ? [cursor.rowid, size + 1] : [size + 1])) as Count[];
+    return {
+      items: rows.slice(0, size),
+      nextCursor: rows.length > size ? rows[size - 1].id : null,
+      total: this.countTotal(),
+    };
+  }
   calculate(input: {
     binId: string;
     totalWeight: number;
@@ -217,6 +274,11 @@ export class InventoryStore {
           .prepare("SELECT * FROM counts WHERE requestId = ?")
           .get(input.requestId) as Count | undefined;
         if (existing) {
+          if (existing.actorId !== this.actorId)
+            throw new InventoryError(
+              "This count request belongs to another operator.",
+              409,
+            );
           const repeated = calculate(
             input.totalWeight,
             input.weightUnit,
@@ -231,19 +293,21 @@ export class InventoryStore {
             existing.countedBy !== input.countedBy ||
             existing.notes !== input.notes
           )
-            throw new Error(
+            throw new InventoryError(
               "Count request already used for different inputs. Preview again.",
+              409,
             );
           return { bin, ...repeated, count: existing };
         }
       }
       if (bin.status !== "active")
-        throw new Error("This bin is archived. Choose an active bin.");
+        throw new InventoryError("This bin is archived. Choose an active bin.");
       if (input.save && (!input.requestId || !input.expectedBinUpdatedAt))
-        throw new Error("Preview this count before saving.");
+        throw new InventoryError("Preview this count before saving.");
       if (input.save && input.expectedBinUpdatedAt !== bin.updatedAt)
-        throw new Error(
+        throw new InventoryError(
           "The bin changed since your preview. Preview again before saving.",
+          409,
         );
       const result = calculate(
         input.totalWeight,
@@ -256,6 +320,7 @@ export class InventoryStore {
       if (input.save) {
         const now = nextTimestamp(bin.updatedAt);
         count = {
+          actorId: this.actorId,
           id: randomUUID(),
           requestId: input.requestId!,
           binId: bin.id,
