@@ -226,6 +226,8 @@ export function legacyProducts(rows: any[], filename: string) {
         sourceUpdatedAt: row.updated_at,
         legacySourceType: row.source_type,
       });
+      // A variant ID is stronger than a SKU, which Shopify does not make unique.
+      if (variant.id) p.id = "shopify-" + string(variant.id);
       p.barcode = string(variant.barcode || specs.barcode || data.partBarcode);
       p.aliases = [p.barcode, string(variant.id), string(row.handle)].filter(
         Boolean,
@@ -243,9 +245,28 @@ export function legacyProducts(rows: any[], filename: string) {
           ? "imported"
           : "missing";
       if (data.weightRows) p.source.weightRows = data.weightRows;
+      if (data.import?.sourceFile) {
+        p.source.workbook = data.import.sourceFile;
+        p.source.sheet = data.import.sheet;
+      }
+      if (measured)
+        p.weightNote =
+          "Imported reference weight; verify against a physical sample.";
+      if (
+        Array.isArray(data.weightRows) &&
+        data.weightRows.some((r: any) => parseWeight(r.rawWeight) === null)
+      ) {
+        p.unitWeightOz = null;
+        p.weightStatus = "conflict";
+        p.weightNote =
+          "Source weight text is ambiguous. Measure the part before counting.";
+      }
       if (data.shopifyInventory)
         p.source.shopifyInventory = data.shopifyInventory;
-      const previous = groups.get(sku.toLowerCase());
+      const identity = variant.id
+        ? `variant:${string(variant.id)}`
+        : `part:${sku.toLowerCase()}`;
+      const previous = groups.get(identity);
       if (previous) {
         previous.source.legacyProductIds = [
           ...new Set([
@@ -271,7 +292,7 @@ export function legacyProducts(rows: any[], filename: string) {
           previous.unitWeightOz = p.unitWeightOz;
           previous.weightStatus = p.weightStatus;
         }
-      } else groups.set(sku.toLowerCase(), p);
+      } else groups.set(identity, p);
     }
   }
   return [...groups.values()];
@@ -284,9 +305,22 @@ export async function readLegacyTransfer(filename: string) {
   const record = z.object({ company_id: z.string().optional() }).passthrough();
   const transfer = z
     .object({
-      formatVersion: z.literal(1),
+      formatVersion: z.union([
+        z.literal(1),
+        z.literal("ibolt-inventory-transfer/v1"),
+      ]),
       exportedAt: z.string().datetime(),
-      sourceSnapshot: z.string().min(1),
+      sourceSnapshot: z.union([
+        z.string().min(1),
+        z
+          .object({
+            filename: z.string().min(1),
+            sha256: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .passthrough(),
+      ]),
+      recordEncoding: z.record(z.unknown()).optional(),
+      calibrationHistory: z.record(z.unknown()).optional(),
       companyId: z.string().min(1),
       products: z
         .array(
@@ -316,6 +350,7 @@ export async function readLegacyTransfer(filename: string) {
   const products = legacyProducts(transfer.products, filename);
   return {
     products,
+    transfer,
     summary: {
       type: "legacy_transfer",
       sourceFile: path.basename(filename),

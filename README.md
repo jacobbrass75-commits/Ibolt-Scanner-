@@ -24,15 +24,15 @@ See [TESTING-TOMORROW.md](TESTING-TOMORROW.md) for the physical scanner and scal
 
 ## Inventory data
 
-The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The deployed catalog came from the available older local catalog and weight workbook. **It is not the newer Mac database described in the email.**
+The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The hosted catalog includes the verified Mac export received September 3, 2026 UTC, reconciled with the existing PC catalog.
 
-- Local source database: 345 Shopify product records expanded into 492 stock items/variants.
-- Workbook: 144 rows, 137 unique parts; 64 merged by exact SKU and 73 added.
-- Combined PC catalog: 565 stock items, with 131 imported usable part weights and 6 weight issues requiring physical review.
-- Workbook barcode cells were empty. SKU scanning works. Product variants also retain any barcode data present in the local catalog. Printed barcodes can be assigned in **Catalog & weights**.
-- No bins or count events were present in that source database. No synthetic test data is in the working database.
+- 700 catalog entries: all 627 Shopify variant IDs plus 73 workbook part entries. All 612 Mac parent/source records are represented in provenance, and all 565 earlier PC records retain their IDs.
+- 131 imported reference weights, six weight issues requiring physical review, and 563 entries without a part weight. No imported weight is marked physically verified.
+- Shared barcodes and SKUs return a choice of items. Distinct Shopify variant IDs remain separate. Three newly received variants share a SKU with a workbook part but lack an established identity link; both entries are retained for review.
+- The sole legacy phone-test bin is preserved as archived history. Its 56 oz tare was an unverified default. Create a new bin with measured weights before operational use.
+- There are no operational bins or saved counts at migration, and no synthetic test data in the hosted database.
 
-These item counts are not directly comparable to parent Shopify product counts. The newer Mac handoff reports 612 product records, one bin, and zero counts. Transfer its consistent SQLite backup privately before reconciling newer products and that bin. Do not replace the PC database after entering real measurements: import and reconcile changes instead.
+These entry counts are not stock quantities or parent-product totals. Shopify source data was last updated August 26, 2026; it is not a live quantity feed. See [docs/DATA-RECONCILIATION.md](docs/DATA-RECONCILIATION.md) for migration evidence and remaining physical checks.
 
 ### Import another catalog
 
@@ -43,9 +43,9 @@ npm run import:catalog -- "C:\path\Product Weights - Compact with Part Barcodes.
 npm run import:catalog -- "C:\path\catalog-backup.sqlite"
 ```
 
-The preview reports insertions, merges, preserved measurements, barcode collisions, and a `planHash` tied to both the source and current destination. Apply with `--apply --expect-plan <planHash>`; use `--expect-source <SHA256>` to verify a supplied transfer manifest. An existing destination is backed up automatically before any change. The import refuses stale previews or new barcode/SKU collisions. Measured weights and assigned barcodes remain intact, while conflicting unverified weights are flagged for physical review.
+The preview reports insertions, merges, preserved measurements, barcode collisions, and a `planHash` tied to both the source and current destination. Apply with `--apply --expect-plan <planHash>`; use `--expect-source <SHA256>` to verify a supplied transfer manifest. An existing destination is backed up automatically before any change. The import refuses stale previews or new barcode/SKU collisions by default. After reviewing source identities, `--allow-shared-codes` explicitly retains distinct items behind shared codes; scanning them requires selection. Measured weights and assigned barcodes remain intact, while conflicting unverified weights are flagged for physical review.
 
-The importer also accepts `inventory-transfer.json.txt` exports from the Mac handoff. It copies catalog fields only and reports pending source bin/count totals; the existing bin and its calibration must be reconciled separately after reading the actual export. It reads SQLite sources with read-only access and rejects an active source WAL. It does not copy integration credentials or unrelated tables. Shopify shipping weights are never treated as measured part weights. The compiled server command is `node dist/scripts/import-catalog.js <source> --database <destination>`.
+The importer also accepts `inventory-transfer.json.txt` exports from the Mac handoff. Catalog import normally leaves bins and counts untouched. The explicit `--archive-legacy-bins` option preserves source bins as archived history and rejects source counts, missing product identities, or existing bin/QR collisions. It is intended for the reviewed historical test bin, not an operational count-history migration. Catalog and historical-bin changes apply in one transaction. SQLite sources are read-only, with active source WALs rejected. Integration credentials and unrelated tables are excluded. Shopify shipping weights are never treated as measured part weights. The compiled command is `node dist/scripts/import-catalog.js <source> --database <destination>`.
 
 ## Workflow
 
@@ -81,4 +81,4 @@ npm run build
 
 ## Headless server
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for service paths, account management, backups, recovery, and deployment verification. The Mac catalog transfer and hands-on scanner/scale acceptance are still outstanding.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for service paths, account management, backups, recovery, and deployment verification. Hands-on scanner and scale acceptance is the remaining physical check.

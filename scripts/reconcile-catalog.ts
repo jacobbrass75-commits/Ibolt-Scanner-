@@ -14,7 +14,7 @@ function identities(products: Product[]) {
   for (const p of products)
     for (const code of [p.sku, p.barcode].filter(Boolean)) {
       const value = owners.get(key(code)) || new Set<string>();
-      value.add(p.sku);
+      value.add(p.id);
       owners.set(key(code), value);
     }
   return owners;
@@ -23,27 +23,73 @@ export function planCatalog(
   current: Product[],
   incoming: Product[],
   sourceHash: string,
+  options: { allowSharedCodes?: boolean } = {},
 ) {
   const beforeHash = catalogHash(current);
-  const bySku = new Map(current.map((p) => [key(p.sku), p]));
+  const result = new Map(current.map((p) => [p.id, p]));
   const seen = new Set<string>();
   const issues: string[] = [];
   const rows = incoming.map((p) => {
-    if (!p.sku || !p.title || seen.has(key(p.sku)))
+    if (!p.sku || !p.title || seen.has(p.id))
       throw new Error(
-        "Import must contain a title and one row per unique SKU.",
+        "Import must contain a title and one row per unique source identity.",
       );
-    seen.add(key(p.sku));
+    seen.add(p.id);
     if (
       p.unitWeightOz !== null &&
       (!Number.isFinite(p.unitWeightOz) || p.unitWeightOz <= 0)
     )
       throw new Error(`Invalid part weight for SKU ${p.sku}.`);
-    const existing = bySku.get(key(p.sku));
-    if (!existing)
-      return { before: null, after: p, operation: "insert" as const };
+    const candidates = [...result.values()].filter((old) => {
+      if (p.source.variantId)
+        return (
+          String(old.source.variantId || "") === String(p.source.variantId)
+        );
+      if (p.source.legacySourceType === "inventory_weight_sheet") {
+        const ids = [
+          old.source.legacyProductId,
+          ...((old.source.legacyProductIds || []) as unknown[]),
+        ];
+        if (ids.includes(p.source.legacyProductId)) return true;
+        // Match workbook evidence already attached to this physical part, not
+        // just an equal SKU on a different Shopify variant.
+        const rowNumbers = (source: Record<string, unknown>) =>
+          ((source.rows || source.weightRows || []) as any[])
+            .map((r) => Number(r.row ?? r.sourceRow))
+            .sort((a, b) => a - b)
+            .join(",");
+        return (
+          key(old.sku) === key(p.sku) &&
+          Boolean(p.source.workbook) &&
+          old.source.workbook === p.source.workbook &&
+          old.source.sheet === p.source.sheet &&
+          Boolean(rowNumbers(p.source)) &&
+          rowNumbers(old.source) === rowNumbers(p.source)
+        );
+      }
+      return key(old.sku) === key(p.sku);
+    });
+    if (candidates.length > 1)
+      throw new Error(
+        `Ambiguous source identity for ${p.sku}; reconcile the source IDs first.`,
+      );
+    const existing = candidates[0];
+    if (!existing) {
+      let after = p;
+      if (result.has(after.id)) {
+        if (!p.source.legacyProductId)
+          throw new Error(
+            "An imported product ID belongs to another identity.",
+          );
+        after = { ...p, id: `legacy-${p.source.legacyProductId}` };
+      }
+      if (result.has(after.id)) throw new Error("Duplicate imported identity.");
+      result.set(after.id, after);
+      return { before: null, after, operation: "insert" as const };
+    }
     const after: Product = {
       ...existing,
+      sku: p.source.variantId ? p.sku : existing.sku,
       title: p.title,
       category: existing.category || p.category,
       barcode: existing.barcode || p.barcode,
@@ -53,6 +99,20 @@ export function planCatalog(
         Math.max(Date.now(), Date.parse(existing.updatedAt) + 1),
       ).toISOString(),
     };
+    after.source.legacyProductIds = [
+      ...new Set(
+        [
+          existing.source.legacyProductId,
+          ...((existing.source.legacyProductIds || []) as unknown[]),
+          p.source.legacyProductId,
+          ...((p.source.legacyProductIds || []) as unknown[]),
+        ].filter(Boolean),
+      ),
+    ];
+    if (!p.source.variantId && existing.source.variantId) {
+      after.source.variantId = existing.source.variantId;
+      after.source.shopifyProductId = existing.source.shopifyProductId;
+    }
     if (
       existing.barcode &&
       p.barcode &&
@@ -95,28 +155,27 @@ export function planCatalog(
       after.weightStatus = "imported";
       after.weightNote = p.weightNote;
     }
+    result.set(after.id, after);
     return { before: existing, after, operation: "merge" as const };
   });
-  const result = new Map(current.map((p) => [p.id, p]));
-  for (const row of rows) {
-    if (!row.before && result.has(row.after.id))
-      throw new Error("An imported product ID belongs to another SKU.");
-    result.set(row.after.id, row.after);
-  }
   const baseline = identities(current);
   const conflicts = [...identities([...result.values()])]
     .filter(
       ([code, owners]) =>
         owners.size > 1 &&
-        [...owners].some((sku) => !baseline.get(code)?.has(sku)),
+        [...owners].some((id) => !baseline.get(code)?.has(id)),
     )
-    .map(([code, owners]) => ({ code, skus: [...owners].sort() }));
+    .map(([code, owners]) => ({
+      code,
+      items: [...owners].sort().map((id) => ({ id, sku: result.get(id)!.sku })),
+    }));
   return {
     rows,
     beforeHash,
     planHash: hash({
       sourceHash,
       beforeHash,
+      allowSharedCodes: Boolean(options.allowSharedCodes),
       changes: rows.map(({ before, after, operation }) => ({
         operation,
         beforeId: before?.id || null,
@@ -131,7 +190,8 @@ export function planCatalog(
         (r) => r.before?.weightStatus === "verified",
       ).length,
       resultingItems: result.size,
-      barcodeConflicts: conflicts,
+      barcodeConflicts: options.allowSharedCodes ? [] : conflicts,
+      sharedCodes: options.allowSharedCodes ? conflicts : [],
       notes: issues,
     },
   };

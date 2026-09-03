@@ -14,6 +14,7 @@ import { planCatalog, applyCatalog } from "./reconcile-catalog";
 import { openDatabase } from "../server/db";
 import { InventoryStore } from "../server/store";
 import { createBackup } from "../server/backups";
+import { planHistoricalBins, applyHistoricalBins } from "./historical-bins";
 
 const args = parseArgs({
   allowPositionals: true,
@@ -22,6 +23,8 @@ const args = parseArgs({
     "expect-plan": { type: "string" },
     "expect-source": { type: "string" },
     database: { type: "string" },
+    "allow-shared-codes": { type: "boolean" },
+    "archive-legacy-bins": { type: "boolean" },
   },
 });
 const [filename, ...extra] = args.positionals;
@@ -41,11 +44,14 @@ if (args.values["expect-source"] && args.values["expect-source"] !== sourceHash)
   throw new Error(
     "Source checksum differs from the supplied manifest. Nothing imported.",
   );
-const result = /\.xlsx$/i.test(filename)
-  ? await readWeightWorkbook(filename)
-  : /\.json(?:\.txt)?$/i.test(filename)
-    ? await readLegacyTransfer(filename)
-    : readLegacyCatalog(filename);
+const transfer = /\.json(?:\.txt)?$/i.test(filename)
+  ? await readLegacyTransfer(filename)
+  : null;
+const result =
+  transfer ||
+  (/\.xlsx$/i.test(filename)
+    ? await readWeightWorkbook(filename)
+    : readLegacyCatalog(filename));
 const existing = existsSync(target);
 const previewDb = existing
   ? new Database(target, { readonly: true, fileMustExist: true })
@@ -65,14 +71,48 @@ try {
       previewDb ? new InventoryStore(previewDb).products() : [],
       result.products,
       sourceHash,
+      { allowSharedCodes: args.values["allow-shared-codes"] },
     );
+    const finalProducts = new Map(
+      (previewDb ? new InventoryStore(previewDb).products() : []).map((p) => [
+        p.id,
+        p,
+      ]),
+    );
+    for (const row of plan.rows) finalProducts.set(row.after.id, row.after);
+    if (args.values["archive-legacy-bins"] && !transfer)
+      throw new Error(
+        "Historical-bin migration requires a scoped JSON transfer.",
+      );
+    const binPlan =
+      args.values["archive-legacy-bins"] && transfer
+        ? planHistoricalBins(
+            previewDb ? new InventoryStore(previewDb).bins(true) : [],
+            transfer.transfer.bins,
+            transfer.transfer.counts,
+            [...finalProducts.values()],
+          )
+        : null;
+    const reviewHash = binPlan
+      ? createHash("sha256")
+          .update(
+            JSON.stringify({ catalog: plan.planHash, bins: binPlan.planHash }),
+          )
+          .digest("hex")
+      : plan.planHash;
     console.log(
       JSON.stringify(
         {
           source: result.summary,
           destination: target,
           sourceHash,
-          planHash: plan.planHash,
+          planHash: reviewHash,
+          historicalBins:
+            binPlan?.rows.map((r) => ({
+              id: r.after.id,
+              qrCode: r.after.qrCode,
+              status: r.after.status,
+            })) || [],
           ...plan.summary,
         },
         null,
@@ -80,7 +120,7 @@ try {
       ),
     );
     if (args.values.apply) {
-      if (args.values["expect-plan"] !== plan.planHash)
+      if (args.values["expect-plan"] !== reviewHash)
         throw new Error(
           "Apply requires --expect-plan with the current preview hash. Preview and review the changes first.",
         );
@@ -112,7 +152,22 @@ try {
       try {
         console.log(
           JSON.stringify(
-            applyCatalog(destination, plan, filename, result.summary),
+            destination
+              .transaction(() => {
+                const applied = applyCatalog(
+                  destination,
+                  plan,
+                  filename,
+                  result.summary,
+                );
+                if (binPlan && !applied.alreadyImported)
+                  applyHistoricalBins(destination, binPlan);
+                return {
+                  ...applied,
+                  archivedLegacyBins: binPlan?.rows.length || 0,
+                };
+              })
+              .immediate(),
           ),
         );
       } finally {
@@ -120,7 +175,10 @@ try {
       }
     } else
       console.log(
-        "Preview only. Apply using --apply --expect-plan followed by the preview hash. Bins and count history remain untouched.",
+        "Preview only. Apply using --apply --expect-plan followed by the preview hash. " +
+          (binPlan
+            ? "Selected legacy bins will be retained as archived history; existing bins and counts remain untouched."
+            : "Bins and count history remain untouched."),
       );
   }
 } finally {

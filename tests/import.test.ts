@@ -10,6 +10,182 @@ import { openDatabase } from "../server/db";
 import { InventoryStore } from "../server/store";
 import { legacyProducts, readLegacyTransfer } from "../scripts/catalog";
 import { planCatalog, applyCatalog } from "../scripts/reconcile-catalog";
+import {
+  planHistoricalBins,
+  applyHistoricalBins,
+} from "../scripts/historical-bins";
+
+test("distinct Shopify variants keep separate stock identities when SKUs or barcodes are reused", () => {
+  const db = openDatabase(":memory:");
+  try {
+    const first = legacyProducts(
+      [
+        {
+          id: "parent-a",
+          title: "Small",
+          source_type: "shopify_admin",
+          variants: [{ id: 101, sku: "SHARED", barcode: "0099" }],
+        },
+      ],
+      "first",
+    )[0];
+    applyCatalog(db, planCatalog([], [first], "first"), "first", {});
+    const store = new InventoryStore(db);
+    store.updateProduct(first.id, {
+      unitWeightOz: 2,
+      barcode: "0099",
+      category: "Parts",
+      weightNote: "Measured",
+      expectedUpdatedAt: first.updatedAt,
+    });
+    const incoming = legacyProducts(
+      [
+        {
+          id: "parent-a",
+          title: "Small renamed",
+          source_type: "shopify_admin",
+          variants: [{ id: 101, sku: "SHARED", barcode: "0099" }],
+        },
+        {
+          id: "parent-b",
+          title: "Large",
+          source_type: "shopify_admin",
+          variants: [{ id: 102, sku: "SHARED", barcode: "0099" }],
+        },
+      ],
+      "new",
+    );
+    assert.equal(incoming.length, 2);
+    assert.throws(
+      () =>
+        applyCatalog(
+          db,
+          planCatalog(store.products(), incoming, "new"),
+          "new",
+          {},
+        ),
+      /collisions/,
+    );
+    applyCatalog(
+      db,
+      planCatalog(store.products(), incoming, "new", {
+        allowSharedCodes: true,
+      }),
+      "new",
+      {},
+    );
+    assert.equal(store.product(first.id).unitWeightOz, 2);
+    assert.equal(store.product("shopify-102").unitWeightOz, null);
+    assert.equal(store.lookup("0099").products.length, 2);
+    assert.equal(store.lookup("SHARED").products.length, 2);
+    const measured = store.product(first.id);
+    store.updateProduct(first.id, {
+      ...measured,
+      unitWeightOz: 3,
+      expectedUpdatedAt: measured.updatedAt,
+    });
+    assert.equal(store.product(first.id).unitWeightOz, 3);
+    assert.equal(store.lookup("102").products[0].title, "Large");
+  } finally {
+    db.close();
+  }
+});
+
+test("workbook provenance links the legacy bin without merging a new same-SKU Shopify variant", () => {
+  const db = openDatabase(":memory:");
+  try {
+    const original = {
+      ...product("00123", 2),
+      source: {
+        workbook: "weights.xlsx",
+        sheet: "Matched Parts",
+        rows: [{ row: 2, rawWeight: "2" }],
+      },
+    };
+    applyCatalog(db, planCatalog([], [original], "old"), "old", {});
+    const store = new InventoryStore(db);
+    const incoming = legacyProducts(
+      [
+        {
+          id: "sheet-part",
+          title: "Measured part",
+          sku: "00123",
+          source_type: "inventory_weight_sheet",
+          specs: { unitWeightOz: 2 },
+          source_data: {
+            import: { sourceFile: "weights.xlsx", sheet: "Matched Parts" },
+            weightRows: [{ sourceRow: 2, rawWeight: "2" }],
+          },
+        },
+        {
+          id: "unlinked-shopify",
+          title: "Other variant",
+          source_type: "shopify_admin",
+          variants: [{ id: 777, sku: "00123" }],
+        },
+      ],
+      "transfer",
+    );
+    const plan = planCatalog(store.products(), incoming, "new", {
+      allowSharedCodes: true,
+    });
+    applyCatalog(db, plan, "new", {});
+    assert.equal(store.products().length, 2);
+    assert.equal(store.product(original.id).unitWeightOz, 2);
+    assert.equal(store.product("shopify-777").unitWeightOz, null);
+    const raw = {
+      id: "bin-1",
+      product_id: "sheet-part",
+      sku: "00123",
+      product_title: "Measured part",
+      bin_label: "Old test",
+      qr_code: "OLD-QR",
+      unit_weight_oz: 2,
+      empty_bin_weight_oz: 56,
+      location: "Test",
+      notes: "Old test",
+      created_at: 100,
+      updated_at: 100,
+      last_quantity: null,
+      last_count_at: null,
+    };
+    const bins = planHistoricalBins([], [raw], [], store.products());
+    applyHistoricalBins(db, bins);
+    assert.equal(store.bins().length, 0);
+    assert.equal(store.bins(true)[0].qrCode, "OLD-QR");
+    assert.equal(store.bins(true)[0].productId, original.id);
+    assert.equal(store.counts().length, 0);
+    assert.throws(
+      () =>
+        store.calculate({
+          binId: "bin-1",
+          totalWeight: 76,
+          weightUnit: "oz",
+          roundingMode: "nearest",
+          save: false,
+          countedBy: "",
+          notes: "",
+        }),
+      /archived/,
+    );
+    assert.throws(
+      () => planHistoricalBins([], [raw], [{}], store.products()),
+      /count history/,
+    );
+    assert.throws(
+      () =>
+        planHistoricalBins(
+          [],
+          [{ ...raw, product_id: "missing" }],
+          [],
+          store.products(),
+        ),
+      /identity/,
+    );
+  } finally {
+    db.close();
+  }
+});
 
 const sourceHash = "a".repeat(64);
 function product(sku = "00123", weight = 2) {

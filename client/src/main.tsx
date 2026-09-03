@@ -52,6 +52,12 @@ const number = (v: number | null | undefined, digits = 4) =>
     : v.toLocaleString(undefined, { maximumFractionDigits: digits });
 const date = (v: string | null) =>
   v ? new Date(v).toLocaleString() : "Not counted yet";
+const catalogIdentity = (p: Product) =>
+  p.source.variantId
+    ? `Shopify variant ${String(p.source.variantId)}`
+    : p.source.workbook
+      ? "Workbook part"
+      : "Catalog part";
 function Field({
   label,
   children,
@@ -402,6 +408,15 @@ function App() {
       ),
     [products, search, filter],
   );
+  const sharedSkus = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of products)
+      counts.set(
+        p.sku.toLowerCase(),
+        (counts.get(p.sku.toLowerCase()) || 0) + 1,
+      );
+    return new Set([...counts].filter(([, n]) => n > 1).map(([sku]) => sku));
+  }, [products]);
   const visibleBins = bins.filter((b) =>
     [b.sku, b.productTitle, b.binLabel, b.location, b.qrCode]
       .join(" ")
@@ -721,6 +736,7 @@ function App() {
                           <span>
                             {p.sku}
                             <small>{p.title}</small>
+                            <small>{catalogIdentity(p)}</small>
                           </span>
                           <Plus size={16} />
                         </button>
@@ -1024,6 +1040,9 @@ function App() {
                         <td>
                           <span className="product-title">{p.title}</span>
                           <small>{p.category}</small>
+                          {sharedSkus.has(p.sku.toLowerCase()) && (
+                            <small>Shared SKU · {catalogIdentity(p)}</small>
+                          )}
                         </td>
                         <td className="nowrap">
                           {number(p.unitWeightOz)} {p.unitWeightOz ? "oz" : ""}

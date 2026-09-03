@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export function openDatabase(
   filename = process.env.DATABASE_PATH || "./data/inventory.sqlite",
 ) {
@@ -61,7 +61,7 @@ export function openDatabase(
       unitWeightOz REAL CHECK(unitWeightOz > 0), weightStatus TEXT NOT NULL DEFAULT 'missing',
       weightNote TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '{}', updatedAt TEXT NOT NULL
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS product_sku ON products(sku COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS product_sku ON products(sku COLLATE NOCASE);
     CREATE TABLE IF NOT EXISTS bins (
       id TEXT PRIMARY KEY, productId TEXT NOT NULL REFERENCES products(id), sku TEXT NOT NULL,
       productTitle TEXT NOT NULL, binLabel TEXT NOT NULL, qrCode TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -88,6 +88,13 @@ export function openDatabase(
     if (version < 2) {
       db.exec(
         "ALTER TABLE counts ADD COLUMN actorId TEXT NOT NULL DEFAULT 'legacy'; ALTER TABLE audit ADD COLUMN actorId TEXT NOT NULL DEFAULT 'legacy';",
+      );
+    }
+    if (version < 3) {
+      // Shopify can assign one SKU to distinct variants. IDs own stock records;
+      // a shared scanned code must return choices, never collapse those records.
+      db.exec(
+        "DROP INDEX IF EXISTS product_sku; CREATE INDEX product_sku ON products(sku COLLATE NOCASE);",
       );
     }
     db.pragma(`user_version = ${SCHEMA_VERSION}`);

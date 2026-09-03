@@ -73,12 +73,12 @@ The tool requires the backup's adjacent `.json` manifest and verifies checksums,
 
 ## Release changes
 
-Build/test a separate release with Node 22, then run `npm prune --omit=dev`. Keep source and native packages compatible with Linux; do not upload Windows `node_modules`. Take a verified online backup before switching versions or applying a migration. Point `/opt/iboltscan/current` at the new release and restart only `iboltscan`. Database schema 2 adds authenticated actors without changing historical counts; earlier records are explicitly marked `legacy`. Future unsupported schemas are refused. A schema-changing rollback needs its matching backup, not just an older code directory.
+Build/test a separate release with Node 22, then run `npm prune --omit=dev`. Keep source and native packages compatible with Linux; do not upload Windows `node_modules`. Take a verified online backup before switching versions or applying a migration. Point `/opt/iboltscan/current` at the new release and restart only `iboltscan`. Schema 2 adds authenticated actors; earlier records are marked `legacy`. Schema 3 permits different product IDs to share a SKU, preserving distinct Shopify variants. Future unsupported schemas are refused. A schema-changing rollback needs its matching backup, not just an older code directory.
 
 Nginx owns HTTPS, HTTP redirects, and a request rate limit. Certbot renews the certificate automatically; its inventory-specific deploy hook validates and reloads nginx. Validate nginx before reloading and preserve all other vhosts. Do not expose Vite or the backend port publicly.
 
-## Acceptance and data still needed
+## Acceptance
 
 Type check, automated inventory/security/import tests, and build pass on Windows and the target Linux server. Public HTTPS, unauthorized-request rejection, catalog lookup, service restart, first hourly backup, and a restored off-server copy were verified. The browser preview/save test used a disposable database with a known ten-part quantity; no synthetic counts were added to operating inventory.
 
-The deployed snapshot has 565 stock items, 131 imported weights, six conflicting weights, zero bins, and zero counts. It comes from the older local catalog plus workbook. The newer Mac handoff describes a separate 612-product snapshot with one bin; it is still needed for catalog reconciliation. Those parent-product totals are not directly comparable to variant-expanded stock items. Physical scanner and scale validation remains the hands-on acceptance step in `TESTING-TOMORROW.md`.
+The Mac transfer was checksum-verified and reconciled on a restored backup before production import. The deployed catalog has 700 entries, all 627 Shopify variant IDs, 131 imported reference weights, and six unresolved weights. The historical phone-test bin is archived with its original ID and QR code. No operational bins or saved counts existed at migration. Shared-barcode and shared-SKU browser scans correctly require item selection. See `docs/DATA-RECONCILIATION.md`. Physical scanner and scale validation remains the hands-on acceptance step in `TESTING-TOMORROW.md`.

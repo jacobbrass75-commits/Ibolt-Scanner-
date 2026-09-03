@@ -80,6 +80,7 @@ export class InventoryStore {
         );
       if (
         input.barcode &&
+        input.barcode.toLowerCase() !== before.barcode.toLowerCase() &&
         this.products().some(
           (p) =>
             p.id !== id &&
