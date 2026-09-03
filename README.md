@@ -22,6 +22,8 @@ Open **http://localhost:5001**. `npm run dev` starts the development server on t
 
 See [TESTING-TOMORROW.md](TESTING-TOMORROW.md) for the physical scanner and scale checklist.
 
+For another computer, follow [Set up inventory at work](docs/WORK-SETUP.md). Use the hosted URL and your login; no local server or repository installation is needed. `Open Hosted Inventory.url` is a portable Windows shortcut. Source code is maintained at [Ibolt-Scanner-](https://github.com/jacobbrass75-commits/Ibolt-Scanner-).
+
 ## Inventory data
 
 The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The hosted catalog includes the verified Mac export received September 3, 2026 UTC, reconciled with the existing PC catalog.
