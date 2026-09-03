@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "exportedAt": "2026-09-03T00:00:00.000Z",
+  "sourceSnapshot": "synthetic QA fixture; never import into operating inventory",
+  "companyId": "fixture-company",
+  "products": [
+    {
+      "id": "fixture-product",
+      "company_id": "fixture-company",
+      "title": "QA fixture only",
+      "sku": "QA-00001",
+      "specs": { "unitWeightOz": 2 }
+    }
+  ],
+  "bins": [],
+  "counts": []
+}

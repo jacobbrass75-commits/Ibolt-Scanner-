@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx server/index.ts",
-    "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js && esbuild scripts/backup.ts scripts/restore.ts scripts/manage-user.ts --bundle --platform=node --format=esm --packages=external --outdir=dist/scripts",
+    "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js && esbuild scripts/backup.ts scripts/restore.ts scripts/manage-user.ts scripts/import-catalog.ts scripts/pull-backup.ts --bundle --platform=node --format=esm --packages=external --outdir=dist/scripts",
     "start": "node dist/server.js",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",

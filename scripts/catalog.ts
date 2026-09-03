@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import JSZip from "jszip";
 import { XMLParser } from "fast-xml-parser";
 import type { Product } from "../shared/types";
+import { z } from "zod";
 
 const arr = <T>(v: T | T[] | undefined): T[] =>
   v === undefined ? [] : Array.isArray(v) ? v : [v];
 const string = (v: unknown) =>
   v === null || v === undefined ? "" : String(v).trim();
 const json = (s: unknown): any => {
+  if (s && typeof s === "object") return s;
   try {
     return JSON.parse(String(s || "{}"));
   } catch {
@@ -191,7 +194,148 @@ export async function readWeightWorkbook(filename: string) {
     },
   };
 }
+export function legacyProducts(rows: any[], filename: string) {
+  const groups = new Map<string, Product>();
+  for (const row of rows) {
+    const data = json(row.source_data),
+      specs = json(row.specs);
+    const variants = Array.isArray(json(row.variants))
+      ? json(row.variants)
+      : [];
+    const sourceVariants = data.shopifyProduct?.variants;
+    const actual = variants.length
+      ? variants
+      : Array.isArray(sourceVariants) && sourceVariants.length
+        ? sourceVariants
+        : [{ sku: row.sku, barcode: specs.barcode || data.partBarcode }];
+    for (const variant of actual) {
+      const sku =
+        string(variant.sku || (actual.length === 1 ? row.sku : "")) ||
+        `SHOPIFY-${variant.id || row.shopify_id || row.id}`;
+      const title =
+        string(row.title) +
+        (actual.length > 1 && variant.title && variant.title !== "Default Title"
+          ? ` — ${variant.title}`
+          : "");
+      const p = makeProduct(sku, title, {
+        legacyProductId: row.id,
+        legacyProductIds: [row.id],
+        shopifyProductId: row.shopify_id,
+        variantId: variant.id || null,
+        sourceFile: path.basename(filename),
+        sourceUpdatedAt: row.updated_at,
+        legacySourceType: row.source_type,
+      });
+      p.barcode = string(variant.barcode || specs.barcode || data.partBarcode);
+      p.aliases = [p.barcode, string(variant.id), string(row.handle)].filter(
+        Boolean,
+      );
+      p.category = row.product_type || categoryFor(title);
+      // Never turn a Shopify shipping weight into a measured component weight.
+      const measured = parseWeight(
+        variant.unitWeightOz ?? data.unitWeightOz ?? specs.unitWeightOz,
+      );
+      const conflict = Boolean(data.weightConflict || specs.weightConflict);
+      p.unitWeightOz = conflict ? null : measured;
+      p.weightStatus = conflict
+        ? "conflict"
+        : measured
+          ? "imported"
+          : "missing";
+      if (data.weightRows) p.source.weightRows = data.weightRows;
+      if (data.shopifyInventory)
+        p.source.shopifyInventory = data.shopifyInventory;
+      const previous = groups.get(sku.toLowerCase());
+      if (previous) {
+        previous.source.legacyProductIds = [
+          ...new Set([
+            ...(previous.source.legacyProductIds as string[]),
+            row.id,
+          ]),
+        ];
+        previous.aliases = [
+          ...new Set(
+            [...previous.aliases, ...p.aliases, p.barcode].filter(Boolean),
+          ),
+        ];
+        if (
+          p.weightStatus === "conflict" ||
+          previous.weightStatus === "conflict" ||
+          (p.unitWeightOz &&
+            previous.unitWeightOz &&
+            p.unitWeightOz !== previous.unitWeightOz)
+        ) {
+          previous.unitWeightOz = null;
+          previous.weightStatus = "conflict";
+        } else if (!previous.unitWeightOz && p.unitWeightOz) {
+          previous.unitWeightOz = p.unitWeightOz;
+          previous.weightStatus = p.weightStatus;
+        }
+      } else groups.set(sku.toLowerCase(), p);
+    }
+  }
+  return [...groups.values()];
+}
+
+export async function readLegacyTransfer(filename: string) {
+  const text = await readFile(filename, "utf8");
+  if (Buffer.byteLength(text) > 20 * 1024 * 1024)
+    throw new Error("Inventory transfer exceeds the 20 MB limit.");
+  const record = z.object({ company_id: z.string().optional() }).passthrough();
+  const transfer = z
+    .object({
+      formatVersion: z.literal(1),
+      exportedAt: z.string().datetime(),
+      sourceSnapshot: z.string().min(1),
+      companyId: z.string().min(1),
+      products: z
+        .array(
+          record
+            .extend({ id: z.string().min(1), title: z.string().min(1) })
+            .passthrough(),
+        )
+        .max(100000),
+      bins: z.array(record).max(100000),
+      counts: z.array(record).max(1000000),
+    })
+    .strict()
+    .parse(JSON.parse(text.replace(/^\uFEFF/, "")));
+  if (
+    [...transfer.products, ...transfer.bins, ...transfer.counts].some(
+      (r) => r.company_id && r.company_id !== transfer.companyId,
+    )
+  )
+    throw new Error(
+      "Transfer contains a different company's records. Request a scoped inventory export.",
+    );
+  if (
+    new Set(transfer.products.map((p) => p.id)).size !==
+    transfer.products.length
+  )
+    throw new Error("Transfer contains duplicate product IDs.");
+  const products = legacyProducts(transfer.products, filename);
+  return {
+    products,
+    summary: {
+      type: "legacy_transfer",
+      sourceFile: path.basename(filename),
+      sourceSnapshot: transfer.sourceSnapshot,
+      companyId: transfer.companyId,
+      exportedAt: transfer.exportedAt,
+      sourceProducts: transfer.products.length,
+      items: products.length,
+      sourceBins: transfer.bins.length,
+      sourceCounts: transfer.counts.length,
+      note: "Catalog preview only; source bins and counts require separate identity/calibration reconciliation before import.",
+    },
+  };
+}
+
 export function readLegacyCatalog(filename: string) {
+  if (existsSync(filename + "-wal") && statSync(filename + "-wal").size > 0)
+    throw new Error(
+      "Source database has an active WAL. Export a consistent online backup before importing.",
+    );
   const legacy = new Database(filename, {
     readonly: true,
     fileMustExist: true,
@@ -207,73 +351,7 @@ export function readLegacyCatalog(filename: string) {
     const rows = legacy
       .prepare(`SELECT * FROM ${table} WHERE company_id=?`)
       .all("ibolt-default-company") as any[];
-    const groups = new Map<string, Product>();
-    for (const row of rows) {
-      const data = json(row.source_data),
-        specs = json(row.specs);
-      const variants: any[] = Array.isArray(json(row.variants))
-        ? json(row.variants)
-        : [];
-      const sourceVariants = data.shopifyProduct?.variants;
-      const actual = variants.length
-        ? variants
-        : Array.isArray(sourceVariants) && sourceVariants.length
-          ? sourceVariants
-          : [{ sku: row.sku, barcode: specs.barcode || data.partBarcode }];
-      for (const variant of actual) {
-        const sku =
-          string(variant.sku || (actual.length === 1 ? row.sku : "")) ||
-          `SHOPIFY-${variant.id || row.shopify_id || row.id}`;
-        const title =
-          string(row.title) +
-          (actual.length > 1 &&
-          variant.title &&
-          variant.title !== "Default Title"
-            ? ` — ${variant.title}`
-            : "");
-        const p = makeProduct(sku, title, {
-          legacyProductId: row.id,
-          shopifyProductId: row.shopify_id,
-          variantId: variant.id || null,
-          sourceFile: path.basename(filename),
-          sourceUpdatedAt: row.updated_at,
-          legacySourceType: row.source_type,
-        });
-        p.barcode = string(
-          variant.barcode || specs.barcode || data.partBarcode,
-        );
-        p.aliases = [p.barcode, string(variant.id), string(row.handle)].filter(
-          Boolean,
-        );
-        p.category = row.product_type || categoryFor(title);
-        // Shopify shipping weights are not individual component measurements.
-        const measured = parseWeight(
-          variant.unitWeightOz ?? data.unitWeightOz ?? specs.unitWeightOz,
-        );
-        const conflict = Boolean(data.weightConflict || specs.weightConflict);
-        p.unitWeightOz = conflict ? null : measured;
-        p.weightStatus = conflict
-          ? "conflict"
-          : measured
-            ? "imported"
-            : "missing";
-        if (data.weightRows) p.source.weightRows = data.weightRows;
-        if (data.shopifyInventory)
-          p.source.shopifyInventory = data.shopifyInventory;
-        const previous = groups.get(sku.toLowerCase());
-        if (previous) {
-          previous.aliases = [...new Set([...previous.aliases, ...p.aliases])];
-          if (
-            p.unitWeightOz &&
-            previous.unitWeightOz &&
-            p.unitWeightOz !== previous.unitWeightOz
-          ) {
-            previous.unitWeightOz = null;
-            previous.weightStatus = "conflict";
-          }
-        } else groups.set(sku.toLowerCase(), p);
-      }
-    }
+    const products = legacyProducts(rows, filename);
     const count = (t: string) =>
       legacy.prepare("SELECT name FROM sqlite_master WHERE name=?").get(t)
         ? (
@@ -283,12 +361,12 @@ export function readLegacyCatalog(filename: string) {
           ).n
         : 0;
     return {
-      products: [...groups.values()],
+      products,
       summary: {
         type: "legacy_catalog",
         sourceFile: path.basename(filename),
         sourceProducts: rows.length,
-        items: groups.size,
+        items: products.length,
         sourceBins: count("inventory_bins"),
         sourceCounts: count("inventory_counts"),
         note: "Catalog only; bins and count history are not imported.",

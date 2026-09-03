@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readFile,
+  writeFile,
+  utimes,
+  readdir,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -15,9 +22,50 @@ import {
   createBackup,
   restoreToNewFile,
   inspectBackup,
+  pruneBackups,
 } from "../server/backups";
 
 const password = "fixture-only-long-password";
+test("backup retention keeps 24 complete snapshots and ignores unrelated or incomplete files", async () => {
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "iboltscan-retention-test-"),
+  );
+  const old = new Date("2020-01-01T00:00:00.000Z");
+  try {
+    for (let i = 0; i < 26; i++) {
+      const filename = path.join(
+        directory,
+        `inventory-2020-01-01T00-00-00-${String(i).padStart(3, "0")}Z-${i.toString(16).padStart(8, "0")}.sqlite`,
+      );
+      await writeFile(filename, "retention fixture");
+      await writeFile(
+        filename + ".json",
+        JSON.stringify({
+          sha256: "a".repeat(64),
+          createdAt: old.toISOString(),
+        }),
+      );
+      await utimes(filename, old, old);
+    }
+    await writeFile(path.join(directory, "other.sqlite"), "unrelated");
+    await writeFile(
+      path.join(directory, "inventory-unfinished.sqlite.partial"),
+      "incomplete",
+    );
+    assert.equal(await pruneBackups(directory), 2);
+    const names = await readdir(directory);
+    assert.equal(
+      names.filter((n) => n.startsWith("inventory-") && n.endsWith(".sqlite"))
+        .length,
+      24,
+    );
+    assert.ok(names.includes("other.sqlite"));
+    assert.ok(names.includes("inventory-unfinished.sqlite.partial"));
+    assert.equal(await pruneBackups(directory), 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 function seed(db: ReturnType<typeof openDatabase>) {
   db.prepare(
     "INSERT INTO products(id,sku,title,updatedAt) VALUES(?,?,?,?)",

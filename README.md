@@ -43,7 +43,9 @@ npm run import:catalog -- "C:\path\Product Weights - Compact with Part Barcodes.
 npm run import:catalog -- "C:\path\catalog-backup.sqlite"
 ```
 
-Back up first, then append `--apply` to import. The importer copies catalog fields only, reads the source SQLite database with read-only access, merges by exact SKU, preserves locally verified weights, records source-file hashes, and skips already imported files. It does **not** restore legacy bins or count history. It does not copy integration credentials or unrelated tables. Original source rows remain inspectable for weight conflicts. Shopify shipping weights are never treated as measured part weights.
+The preview reports insertions, merges, preserved measurements, barcode collisions, and a `planHash` tied to both the source and current destination. Apply with `--apply --expect-plan <planHash>`; use `--expect-source <SHA256>` to verify a supplied transfer manifest. An existing destination is backed up automatically before any change. The import refuses stale previews or new barcode/SKU collisions. Measured weights and assigned barcodes remain intact, while conflicting unverified weights are flagged for physical review.
+
+The importer also accepts `inventory-transfer.json.txt` exports from the Mac handoff. It copies catalog fields only and reports pending source bin/count totals; the existing bin and its calibration must be reconciled separately after reading the actual export. It reads SQLite sources with read-only access and rejects an active source WAL. It does not copy integration credentials or unrelated tables. Shopify shipping weights are never treated as measured part weights. The compiled server command is `node dist/scripts/import-catalog.js <source> --database <destination>`.
 
 ## Workflow
 
@@ -79,4 +81,4 @@ npm run build
 
 ## Headless server
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for service paths, account management, backups, recovery, and deployment verification. Recurring off-host backup and the newer Mac catalog transfer are still outstanding.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for service paths, account management, backups, recovery, and deployment verification. The Mac catalog transfer and hands-on scanner/scale acceptance are still outstanding.

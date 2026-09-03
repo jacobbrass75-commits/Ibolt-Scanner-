@@ -44,7 +44,11 @@ The tool also accepts the password on stdin for private automation. Do not pass 
 
 `iboltscan-backup.timer` creates an online SQLite snapshot every hour. Each completed backup has an adjacent JSON manifest with SHA-256, schema version, record totals, and creation time. Integrity and foreign keys are checked. The backup script prunes its own complete snapshots older than 30 days while retaining at least 24 files. It refuses new snapshots when less than 1 GB of disk is free.
 
-An initial server backup was transferred back to this PC and restored successfully. **Recurring off-host backup is not configured.** Download or privately copy new backups off the server regularly; the hourly copies alone cannot recover from loss of the entire server. Keep the JSON manifest with the SQLite file when copying scheduled backups. The in-app download gives a consistent SQLite file; its checksum is also returned in `X-Backup-SHA256`, and its full manifest remains in the server backup directory.
+The Windows task **Iboltscan-Backup-Pull** copies recent snapshots to this PC's `backups/remote/` hourly and at sign-in, while Jacob is signed in and the PC is online. It uses the existing SSH identity with strict host-key verification, checks SHA-256, SQLite integrity, foreign keys, schema, and record totals, and catches up at most 24 recent snapshots per run. It keeps 30 days with at least 24 files retained. The first transfer and an off-server restore were verified. Its status is in the ignored `private/backup-pull-status.json`; Task Scheduler reports nonzero exit codes on failure and retries twice.
+
+When this PC is offline, hourly backups continue on the server and off-server copies resume when the PC is available. This is not a continuously available off-site storage service. Keep the JSON manifest with the SQLite file. The in-app download gives a consistent SQLite file; its checksum is also returned in `X-Backup-SHA256`, and its full manifest remains in the server backup directory.
+
+Run a pull manually from this PC with `node dist/scripts/pull-backup.js root@89.167.10.34`. The registration script `deploy/register-backup-pull.ps1 -SshTarget root@89.167.10.34` creates the task on a configured Windows checkout; it refuses to overwrite an existing task. Inventory passwords are never stored in the scheduled task.
 
 Check service health and backup results:
 
@@ -75,6 +79,6 @@ Nginx owns HTTPS, HTTP redirects, and a request rate limit. Certbot renews the c
 
 ## Acceptance and data still needed
 
-Type check, 15 automated inventory/security tests, and build pass on Windows and the target Linux server. Public HTTPS, unauthorized-request rejection, catalog lookup, service restart, first hourly backup, and a restored off-server copy were verified. The browser preview/save test used a disposable database with a known ten-part quantity; no synthetic counts were added to operating inventory.
+Type check, automated inventory/security/import tests, and build pass on Windows and the target Linux server. Public HTTPS, unauthorized-request rejection, catalog lookup, service restart, first hourly backup, and a restored off-server copy were verified. The browser preview/save test used a disposable database with a known ten-part quantity; no synthetic counts were added to operating inventory.
 
 The deployed snapshot has 565 stock items, 131 imported weights, six conflicting weights, zero bins, and zero counts. It comes from the older local catalog plus workbook. The newer Mac handoff describes a separate 612-product snapshot with one bin; it is still needed for catalog reconciliation. Those parent-product totals are not directly comparable to variant-expanded stock items. Physical scanner and scale validation remains the hands-on acceptance step in `TESTING-TOMORROW.md`.
