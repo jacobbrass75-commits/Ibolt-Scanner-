@@ -73,7 +73,7 @@ if (!(await health())) {
     );
 }
 console.log(`Inventory ready: ${url}`);
-if (process.platform === "win32")
+if (process.platform === "win32" && !process.argv.includes("--no-browser"))
   spawn(
     "powershell.exe",
     ["-NoProfile", "-Command", `Start-Process '${url}'`],
