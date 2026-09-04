@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler } from "express";
+import { getAuth } from "@clerk/express";
 import type { AuthUser, Identity } from "./config";
 import { isLoopback } from "./config";
 import { loginPage, loginCss, safeReturn } from "./login";
@@ -29,6 +30,142 @@ type SecurityOptions = {
   now?: () => number;
   maxFailures?: number;
 };
+
+type ClerkUserLike = {
+  id: string;
+  username?: string | null;
+  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  primaryEmailAddress?: { emailAddress: string } | null;
+  publicMetadata?: Record<string, unknown>;
+  banned?: boolean;
+  locked?: boolean;
+};
+
+export function identityFromClerkUser(user: ClerkUserLike): Identity {
+  if (user.banned || user.locked)
+    throw Object.assign(new Error("This inventory account is disabled."), {
+      status: 403,
+    });
+  const metadataRole = user.publicMetadata?.role;
+  const role: Identity["role"] = ["admin", "operator", "viewer"].includes(
+    String(metadataRole),
+  )
+    ? (metadataRole as Identity["role"])
+    : "operator";
+  const joinedName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+  const email = user.primaryEmailAddress?.emailAddress;
+  return {
+    username: user.id,
+    displayName:
+      user.fullName ||
+      joinedName ||
+      user.username ||
+      email ||
+      "Inventory operator",
+    role,
+    authenticated: true,
+  };
+}
+
+export function clerkSecurity(options: {
+  publicOrigin?: string;
+  development?: boolean;
+  resolveUser: (userId: string) => Promise<ClerkUserLike>;
+  getUserId?: (req: Request) => string | undefined;
+}): RequestHandler {
+  const identities = new Map<
+    string,
+    { value: Promise<Identity>; expires: number }
+  >();
+  const getUserId =
+    options.getUserId ||
+    ((req: Request) => {
+      const auth = getAuth(req);
+      return auth.isAuthenticated ? auth.userId : undefined;
+    });
+  const unauthenticated: Identity = {
+    username: "signed-out",
+    displayName: "Signed out",
+    role: "viewer",
+    authenticated: false,
+  };
+  return async (req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(self), microphone=(), geolocation=()",
+    );
+    res.setHeader("Cache-Control", "no-store");
+    if (!options.development)
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://img.clerk.com; connect-src 'self' https://clerk-telemetry.com https://*.clerk-telemetry.com https://api.stripe.com https://maps.googleapis.com https://img.clerk.com https://images.clerkstage.dev https://*.protect.clerk.com:* https:; worker-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com https://*.js.stripe.com https://js.stripe.com https://hooks.stripe.com https://*.protect.clerk.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      );
+    const host = req.headers.host || "";
+    const localHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+    if (
+      !localHost &&
+      (!options.publicOrigin || host !== new URL(options.publicOrigin).host)
+    ) {
+      res.status(403).json({ error: "Unrecognized inventory host." });
+      return;
+    }
+    if (options.publicOrigin && host === new URL(options.publicOrigin).host)
+      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+    if (req.path === "/healthz" && req.method === "GET") {
+      next();
+      return;
+    }
+    const origin = req.headers.origin;
+    if (
+      (origin && origin !== (options.publicOrigin || `http://${host}`)) ||
+      (req.headers["sec-fetch-site"] === "cross-site" &&
+        !["GET", "HEAD"].includes(req.method))
+    ) {
+      res
+        .status(403)
+        .json({ error: "Requests must come from this inventory app." });
+      return;
+    }
+    if (!req.path.startsWith("/api/")) {
+      res.locals.identity = unauthenticated;
+      next();
+      return;
+    }
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Inventory sign-in required." });
+      return;
+    }
+    const now = Date.now();
+    for (const [key, entry] of identities)
+      if (entry.expires <= now) identities.delete(key);
+    let entry = identities.get(userId);
+    if (!entry) {
+      if (identities.size >= 1000) identities.clear();
+      entry = {
+        value: options.resolveUser(userId).then(identityFromClerkUser),
+        expires: now + 60000,
+      };
+      identities.set(userId, entry);
+    }
+    try {
+      res.locals.identity = await entry.value;
+      next();
+    } catch (error) {
+      identities.delete(userId);
+      if ((error as { status?: number }).status === 403) {
+        res.status(403).json({ error: (error as Error).message });
+        return;
+      }
+      next(error);
+    }
+  };
+}
 export function security(options: SecurityOptions): RequestHandler {
   const now = options.now || Date.now;
   const attempts = new Map<string, { count: number; expires: number }>();

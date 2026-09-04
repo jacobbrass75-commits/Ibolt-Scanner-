@@ -1,11 +1,12 @@
 import express from "express";
 import { z } from "zod";
+import { clerkMiddleware, createClerkClient } from "@clerk/express";
 import { once } from "node:events";
 import path from "node:path";
 import type { InventoryDatabase } from "./db";
 import { InventoryStore } from "./store";
-import { security, requireRole } from "./security";
-import type { AuthUser, Identity } from "./config";
+import { clerkSecurity, security, requireRole } from "./security";
+import type { AuthUser, ClerkConfig, Identity } from "./config";
 import { InventoryError } from "./errors";
 import { createBackup } from "./backups";
 
@@ -28,6 +29,7 @@ export function createApp(
   db: InventoryDatabase,
   options: {
     users?: AuthUser[];
+    clerk?: ClerkConfig;
     password?: string;
     publicOrigin?: string;
     development?: boolean;
@@ -40,7 +42,37 @@ export function createApp(
     store = new InventoryStore(db);
   app.disable("x-powered-by");
   app.use("/login", express.urlencoded({ extended: false, limit: "2kb" }));
-  app.use(security(options));
+  if (options.clerk) {
+    const client = createClerkClient({ secretKey: options.clerk.secretKey });
+    app.use(
+      clerkMiddleware({
+        clerkClient: client,
+        publishableKey: options.clerk.publishableKey,
+        secretKey: options.clerk.secretKey,
+        proxyUrl: options.clerk.proxyUrl,
+        frontendApiProxy: options.clerk.proxyUrl
+          ? { enabled: true, path: new URL(options.clerk.proxyUrl).pathname }
+          : undefined,
+        authorizedParties: options.publicOrigin
+          ? [options.publicOrigin]
+          : undefined,
+      }),
+    );
+    app.use(
+      clerkSecurity({
+        publicOrigin: options.publicOrigin,
+        development: options.development,
+        resolveUser: (userId) => client.users.getUser(userId),
+      }),
+    );
+  } else app.use(security(options));
+  app.get("/auth-config", (_req, res) =>
+    res.json({
+      provider: options.clerk ? "clerk" : "local",
+      clerkPublishableKey: options.clerk?.publishableKey || null,
+      clerkProxyUrl: options.clerk?.proxyUrl || null,
+    }),
+  );
   app.use(express.json({ limit: "200kb" }));
   app.use("/api", (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");

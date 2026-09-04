@@ -16,8 +16,13 @@ import Database from "better-sqlite3";
 import { openDatabase, SCHEMA_VERSION } from "../server/db";
 import { createApp } from "../server/app";
 import { InventoryStore } from "../server/store";
-import { hashPassword, verifyPassword } from "../server/security";
-import { loadConfig, type AuthUser } from "../server/config";
+import {
+  clerkSecurity,
+  hashPassword,
+  identityFromClerkUser,
+  verifyPassword,
+} from "../server/security";
+import { loadConfig, type AuthUser, type Identity } from "../server/config";
 import {
   createBackup,
   restoreToNewFile,
@@ -375,7 +380,7 @@ test("v1 migration preserves counts and marks legacy actors; future schemas are 
 });
 
 test("production configuration fails closed without named accounts and persistent paths", () => {
-  assert.throws(() => loadConfig({ APP_MODE: "production" }), /named users/);
+  assert.throws(() => loadConfig({ APP_MODE: "production" }), /authentication/);
   assert.throws(
     () => loadConfig({ PUBLIC_ORIGIN: "http://example.com" }),
     /HTTPS/,
@@ -384,8 +389,111 @@ test("production configuration fails closed without named accounts and persisten
     () => loadConfig({ PUBLIC_ORIGIN: "https://example.com/path" }),
     /without a path/,
   );
-  assert.throws(() => loadConfig({ HOST: "0.0.0.0" }), /named users/);
+  assert.throws(() => loadConfig({ HOST: "0.0.0.0" }), /authentication/);
   assert.equal(loadConfig({}).host, "127.0.0.1");
+  assert.throws(
+    () => loadConfig({ CLERK_PUBLISHABLE_KEY: "pk_test_fixture" }),
+    /configured together/,
+  );
+  const clerk = loadConfig({
+    CLERK_PUBLISHABLE_KEY: "pk_test_fixture",
+    CLERK_SECRET_KEY: "sk_test_fixture",
+    PUBLIC_ORIGIN: "https://inventory.example.com",
+    CLERK_PROXY_URL: "https://inventory.example.com/__clerk/",
+  }).clerk;
+  assert.equal(clerk?.publishableKey, "pk_test_fixture");
+  assert.equal(clerk?.secretKey, "sk_test_fixture");
+  assert.equal(clerk?.proxyUrl, "https://inventory.example.com/__clerk");
+  assert.throws(
+    () =>
+      loadConfig({
+        CLERK_PUBLISHABLE_KEY: "pk_test_fixture",
+        CLERK_SECRET_KEY: "sk_test_fixture",
+        PUBLIC_ORIGIN: "https://inventory.example.com",
+        CLERK_PROXY_URL: "https://clerk.example.com/__clerk",
+      }),
+    /PUBLIC_ORIGIN host/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        CLERK_PROXY_URL: "https://inventory.example.com/__clerk",
+      }),
+    /requires Clerk authentication keys/,
+  );
+});
+
+test("Clerk identities default to operator and accept only administrator-set roles", () => {
+  assert.deepEqual(
+    identityFromClerkUser({
+      id: "user_fixture",
+      fullName: "Office Operator",
+      publicMetadata: {},
+    }),
+    {
+      username: "user_fixture",
+      displayName: "Office Operator",
+      role: "operator",
+      authenticated: true,
+    },
+  );
+  assert.equal(
+    identityFromClerkUser({
+      id: "user_admin",
+      primaryEmailAddress: { emailAddress: "admin@example.com" },
+      publicMetadata: { role: "admin" },
+    }).role,
+    "admin",
+  );
+  assert.equal(
+    identityFromClerkUser({
+      id: "user_untrusted",
+      publicMetadata: { role: "owner" },
+    }).role,
+    "operator",
+  );
+  assert.throws(
+    () => identityFromClerkUser({ id: "user_locked", locked: true }),
+    /disabled/,
+  );
+});
+
+test("Clerk approval pages stay public while inventory APIs require a verified user", async () => {
+  const app = (await import("express")).default();
+  let resolutions = 0;
+  app.use(
+    clerkSecurity({
+      development: true,
+      getUserId: (req) => req.header("x-fixture-user") || undefined,
+      resolveUser: async (id) => {
+        resolutions++;
+        return {
+          id,
+          fullName: "Approved Operator",
+          publicMetadata: { role: "operator" },
+        };
+      },
+    }),
+  );
+  app.get("/sign-up", (_req, res) => res.send("request access"));
+  app.get("/api/whoami", (_req, res) => res.json(res.locals.identity));
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const root = `http://127.0.0.1:${(server.address() as any).port}`;
+  try {
+    assert.equal((await fetch(root + "/sign-up")).status, 200);
+    assert.equal((await fetch(root + "/api/whoami")).status, 401);
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(root + "/api/whoami", {
+        headers: { "x-fixture-user": "user_approved" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(((await response.json()) as Identity).role, "operator");
+    }
+    assert.equal(resolutions, 1);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test("browser sign-in uses secure expiring sessions, rejects cross-site login and revokes on logout", async () => {

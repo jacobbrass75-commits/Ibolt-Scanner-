@@ -6,17 +6,17 @@ The server is the operating database. On the configured PC, `Start Inventory.cmd
 
 ## Service layout
 
-| Item | Location |
-| --- | --- |
-| Service | `iboltscan.service`, starts at boot and restarts on failure |
-| Code | `/opt/iboltscan/current` → a versioned release |
-| Private runtime | `/opt/iboltscan/node/bin/node` (22.23.2) |
-| Persistent inventory | `/var/lib/iboltscan/inventory.sqlite` |
-| Configuration | `/etc/iboltscan/app.env` |
-| Hashed accounts | `/etc/iboltscan/users.json` |
-| Backups | `/var/backups/iboltscan/` |
-| Proxy | `/etc/nginx/sites-available/iboltscan.conf` |
-| Backend | `127.0.0.1:5010`, accessible only on the server |
+| Item                 | Location                                                    |
+| -------------------- | ----------------------------------------------------------- |
+| Service              | `iboltscan.service`, starts at boot and restarts on failure |
+| Code                 | `/opt/iboltscan/current` → a versioned release              |
+| Private runtime      | `/opt/iboltscan/node/bin/node` (22.23.2)                    |
+| Persistent inventory | `/var/lib/iboltscan/inventory.sqlite`                       |
+| Configuration        | `/etc/iboltscan/app.env`                                    |
+| Hashed accounts      | `/etc/iboltscan/users.json`                                 |
+| Backups              | `/var/backups/iboltscan/`                                   |
+| Proxy                | `/etc/nginx/sites-available/iboltscan.conf`                 |
+| Backend              | `127.0.0.1:5010`, accessible only on the server             |
 
 The app runs as the dedicated `iboltscan` account with a 512 MB memory limit, a read-only application directory, and access to its own writable data and backup directories. Existing hosted apps retain their runtimes and ports. The repository contains no credentials or inventory data.
 
@@ -39,6 +39,24 @@ systemctl restart iboltscan
 ```
 
 The tool also accepts the password on stdin for private automation. Do not pass it as a command argument, write it into Git, or print it in logs. Editing accounts requires a restart, which revokes existing sessions.
+
+### Clerk approval mode
+
+The application can use Clerk instead of the local users file. Configure the two runtime values below in the protected service environment; never commit or print the secret key:
+
+```text
+CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+CLERK_PROXY_URL=https://inventory.89.167.10.34.nip.io/__clerk
+```
+
+Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publishable key to the browser through `/auth-config`; the secret key stays server-side. Clerk's Express middleware verifies sessions with `authorizedParties` restricted to `PUBLIC_ORIGIN`. Approved users default to the `operator` role. Set Clerk public metadata `role` to `admin`, `operator`, or `viewer` when a different role is required.
+
+In the Clerk Dashboard, set **Access mode** to **Waitlist** and keep email enabled. `/sign-up` becomes the request-access page. An administrator approves a request from Clerk's Waitlist screen; Clerk then emails the invitation. Until approval, the requester cannot create an active inventory session. `/sign-in` is for approved users only.
+
+The free `nip.io` hostname cannot publish Clerk's requested CNAME records. For this deployment, set the production domain's Frontend API to the proxy URL above. The Express middleware serves that same-origin proxy before authentication and the client receives only the public proxy URL. Configure the proxy in Clerk only after the release is live and `https://inventory.89.167.10.34.nip.io/__clerk` resolves; Clerk validates it before enabling the instance.
+
+Create a Clerk production instance before replacing live authentication. Build and test a separate release, install both keys into the protected service environment, take a verified inventory backup, and then use the normal reviewed deployment procedure. Do not reuse keys from another Clerk application or put development keys into the live service.
 
 ## Backups and recovery
 

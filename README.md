@@ -4,7 +4,7 @@ A standalone inventory application for product weights, USB and camera scanning,
 
 ## Open the hosted inventory
 
-Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. Sign-in details are in the private local file `private/Inventory Login.txt`. The existing Hetzner server is reused at no added server cost. Named accounts, HTTPS, automatic restart, hourly verified backups, and a restore procedure are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. The current release uses named local accounts; the Clerk migration adds `/sign-up` as an approval-request page and `/sign-in` for approved users. The existing Hetzner server is reused at no added server cost. Authentication, HTTPS, automatic restart, hourly verified backups, and recovery are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Use the hosted database for all new measurements and counts. The former PC database is preserved; it does not synchronize automatically.
 

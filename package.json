@@ -19,6 +19,8 @@
     "user": "tsx scripts/manage-user.ts"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.66",
+    "@clerk/react": "^6.15.1",
     "@zxing/browser": "0.1.5",
     "better-sqlite3": "12.6.2",
     "dotenv": "16.4.5",

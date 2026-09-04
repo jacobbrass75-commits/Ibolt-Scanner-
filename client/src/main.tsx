@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  ClerkProvider,
+  Show,
+  SignIn,
+  SignOutButton,
+  UserButton,
+  Waitlist,
+} from "@clerk/react";
+import {
   Boxes,
   ScanLine,
   Scale,
@@ -29,6 +37,10 @@ import type {
 } from "../../shared/types";
 import "./style.css";
 
+let clerkPublishableKey = "";
+let clerkProxyUrl = "";
+let clerkEnabled = false;
+
 async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
   const response = await fetch("/api" + url, {
     method,
@@ -38,7 +50,7 @@ async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
   if (!response.ok) {
     if (response.status === 401)
       window.location.assign(
-        "/login?returnTo=" +
+        (clerkEnabled ? "/sign-in?returnTo=" : "/login?returnTo=") +
           encodeURIComponent(window.location.pathname + window.location.search),
       );
     const error = await response.json().catch(() => ({}));
@@ -473,9 +485,18 @@ function App() {
               <p>
                 {status.identity.displayName} · {status.identity.role}
               </p>
-              <form action="/logout" method="post">
-                <button type="submit">Sign out</button>
-              </form>
+              {clerkEnabled ? (
+                <div className="clerk-account">
+                  <UserButton />
+                  <SignOutButton redirectUrl="/sign-in">
+                    <button type="button">Sign out</button>
+                  </SignOutButton>
+                </div>
+              ) : (
+                <form action="/logout" method="post">
+                  <button type="submit">Sign out</button>
+                </form>
+              )}
             </>
           )}
           <small>Shopify quantities are unchanged.</small>
@@ -1666,4 +1687,81 @@ function QrLabel({
     </Modal>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+function ClerkAuth() {
+  const waitlist = window.location.pathname.startsWith("/sign-up");
+  return (
+    <>
+      <Show when="signed-out">
+        <div className="auth-page">
+          <div className="auth-copy">
+            <div className="auth-brand">
+              iBolt <span>Inventory</span>
+            </div>
+            <h1>
+              {waitlist ? "Request inventory access" : "Sign in to inventory"}
+            </h1>
+            <p>
+              {waitlist
+                ? "Submit your work email. An administrator must approve it before you can use the shared inventory."
+                : "Approved operators can scan parts, record measured weights, and save physical counts."}
+            </p>
+          </div>
+          {waitlist ? (
+            <Waitlist
+              signInUrl="/sign-in"
+              afterJoinWaitlistUrl="/sign-up?requested=1"
+            />
+          ) : (
+            <SignIn
+              routing="path"
+              path="/sign-in"
+              waitlistUrl="/sign-up"
+              fallbackRedirectUrl="/"
+            />
+          )}
+        </div>
+      </Show>
+      <Show when="signed-in">
+        <App />
+      </Show>
+    </>
+  );
+}
+
+async function start() {
+  const response = await fetch("/auth-config", {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Inventory authentication is unavailable.");
+  const config = (await response.json()) as {
+    provider: "clerk" | "local";
+    clerkPublishableKey: string | null;
+    clerkProxyUrl: string | null;
+  };
+  clerkPublishableKey = config.clerkPublishableKey || "";
+  clerkProxyUrl = config.clerkProxyUrl || "";
+  clerkEnabled = config.provider === "clerk" && Boolean(clerkPublishableKey);
+  createRoot(document.getElementById("root")!).render(
+    clerkEnabled ? (
+      <ClerkProvider
+        publishableKey={clerkPublishableKey}
+        proxyUrl={clerkProxyUrl || undefined}
+        signInUrl="/sign-in"
+        signUpUrl="/sign-up"
+        waitlistUrl="/sign-up"
+        signInFallbackRedirectUrl="/"
+        signUpFallbackRedirectUrl="/"
+      >
+        <ClerkAuth />
+      </ClerkProvider>
+    ) : (
+      <App />
+    ),
+  );
+}
+
+void start().catch((error) => {
+  const root = document.getElementById("root")!;
+  root.textContent =
+    error instanceof Error ? error.message : "Inventory failed to start.";
+});

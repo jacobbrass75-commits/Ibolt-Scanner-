@@ -16,6 +16,46 @@
 body {
   margin: 0;
 }
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 440px) minmax(320px, 440px);
+  align-items: center;
+  justify-content: center;
+  gap: 72px;
+  padding: 32px;
+  background: linear-gradient(135deg, #eef5f4, #f7f8fa 55%, #edf2f6);
+}
+.auth-copy {
+  max-width: 430px;
+}
+.auth-copy h1 {
+  margin: 28px 0 14px;
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.08;
+}
+.auth-copy p {
+  color: #5f707d;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.auth-brand {
+  color: var(--dark);
+  font:
+    750 25px "Manrope",
+    system-ui,
+    sans-serif;
+}
+.auth-brand span {
+  color: #617789;
+  font-weight: 400;
+}
+.clerk-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
 button,
 input,
 select {
@@ -181,6 +221,13 @@ nav button.active {
 }
 .backup:hover {
   background: #2c4458;
+}
+@media (max-width: 760px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 24px 16px;
+  }
 }
 .workspace {
   margin-left: 242px;

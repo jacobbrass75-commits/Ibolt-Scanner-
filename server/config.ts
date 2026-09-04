@@ -32,6 +32,11 @@ export type AuthUser = z.infer<typeof userSchema>;
 export type Identity = Pick<AuthUser, "username" | "displayName" | "role"> & {
   authenticated: boolean;
 };
+export type ClerkConfig = {
+  publishableKey: string;
+  secretKey: string;
+  proxyUrl?: string;
+};
 export const isLoopback = (host: string) =>
   ["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"].includes(host);
 export function loadUsers(filename: string): AuthUser[] {
@@ -65,12 +70,52 @@ export function loadConfig(env = process.env) {
   const users = env.AUTH_USERS_FILE
     ? loadUsers(env.AUTH_USERS_FILE)
     : undefined;
-  if (mode === "production" && (!users || !publicOrigin))
+  const clerkPublishableKey = env.CLERK_PUBLISHABLE_KEY?.trim();
+  const clerkSecretKey = env.CLERK_SECRET_KEY?.trim();
+  if (Boolean(clerkPublishableKey) !== Boolean(clerkSecretKey))
     throw new Error(
-      "Production requires AUTH_USERS_FILE with named users and PUBLIC_ORIGIN with the HTTPS address.",
+      "CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY must be configured together.",
     );
-  if (!isLoopback(host) && (!users || !publicOrigin))
-    throw new Error("Remote binding requires named users and PUBLIC_ORIGIN.");
+  let clerkProxyUrl: string | undefined;
+  if (env.CLERK_PROXY_URL) {
+    const url = new URL(env.CLERK_PROXY_URL);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname === "/"
+    )
+      throw new Error(
+        "CLERK_PROXY_URL must be an HTTPS URL with a non-root path and without a query or credentials.",
+      );
+    if (publicOrigin && url.origin !== publicOrigin)
+      throw new Error("CLERK_PROXY_URL must use the PUBLIC_ORIGIN host.");
+    clerkProxyUrl = url.origin + url.pathname.replace(/\/+$/, "");
+  }
+  const clerk =
+    clerkPublishableKey && clerkSecretKey
+      ? {
+          publishableKey: clerkPublishableKey,
+          secretKey: clerkSecretKey,
+          proxyUrl: clerkProxyUrl,
+        }
+      : undefined;
+  if (clerkProxyUrl && !clerk)
+    throw new Error("CLERK_PROXY_URL requires Clerk authentication keys.");
+  if (users && clerk)
+    throw new Error(
+      "Configure either Clerk or AUTH_USERS_FILE, not both authentication systems.",
+    );
+  if (mode === "production" && ((!users && !clerk) || !publicOrigin))
+    throw new Error(
+      "Production requires Clerk or AUTH_USERS_FILE authentication and PUBLIC_ORIGIN with the HTTPS address.",
+    );
+  if (!isLoopback(host) && ((!users && !clerk) || !publicOrigin))
+    throw new Error(
+      "Remote binding requires authentication and PUBLIC_ORIGIN.",
+    );
   if (mode === "production" && env.ACCESS_PASSWORD)
     throw new Error(
       "ACCESS_PASSWORD is for local pilot use only. Configure named users for production.",
@@ -91,6 +136,7 @@ export function loadConfig(env = process.env) {
     port,
     publicOrigin,
     users,
+    clerk,
     password: env.ACCESS_PASSWORD,
     databasePath,
     backupDir,
