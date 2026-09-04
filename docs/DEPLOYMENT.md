@@ -54,6 +54,8 @@ Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publ
 
 In the Clerk Dashboard, set **Access mode** to **Waitlist** and keep email enabled. `/sign-up` becomes the request-access page. An administrator approves a request from Clerk's Waitlist screen; Clerk then emails the invitation. Until approval, the requester cannot create an active inventory session. `/sign-in` is for approved users only.
 
+The app embeds Clerk's invitation sign-up component at `/accept-invitation`. For this proxy-only deployment, create invitations with `redirectUrl` set to that HTTPS route so they do not depend on the unconfigured Account Portal hostname. Clerk validates the invitation ticket; this page does not bypass Waitlist access controls.
+
 The free `nip.io` hostname cannot publish Clerk's requested CNAME records. For this deployment, set the production domain's Frontend API to the proxy URL above. The Express middleware serves that same-origin proxy before authentication and the client receives only the public proxy URL. Configure the proxy in Clerk only after the release is live and `https://inventory.89.167.10.34.nip.io/__clerk` resolves; Clerk validates it before enabling the instance.
 
 Create a Clerk production instance before replacing live authentication. Build and test a separate release, install both keys into the protected service environment, take a verified inventory backup, and then use the normal reviewed deployment procedure. Do not reuse keys from another Clerk application or put development keys into the live service.

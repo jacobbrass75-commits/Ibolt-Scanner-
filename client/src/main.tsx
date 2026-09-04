@@ -4,6 +4,7 @@ import {
   ClerkProvider,
   Show,
   SignIn,
+  SignUp,
   SignOutButton,
   UserButton,
   Waitlist,
@@ -1689,6 +1690,7 @@ function QrLabel({
 }
 function ClerkAuth() {
   const waitlist = window.location.pathname.startsWith("/sign-up");
+  const invitation = window.location.pathname.startsWith("/accept-invitation");
   return (
     <>
       <Show when="signed-out">
@@ -1698,7 +1700,11 @@ function ClerkAuth() {
               iBolt <span>Inventory</span>
             </div>
             <h1>
-              {waitlist ? "Request inventory access" : "Sign in to inventory"}
+              {waitlist
+                ? "Request inventory access"
+                : invitation
+                  ? "Accept inventory invitation"
+                  : "Sign in to inventory"}
             </h1>
             <p>
               {waitlist
@@ -1706,7 +1712,14 @@ function ClerkAuth() {
                 : "Approved operators can scan parts, record measured weights, and save physical counts."}
             </p>
           </div>
-          {waitlist ? (
+          {invitation ? (
+            <SignUp
+              routing="path"
+              path="/accept-invitation"
+              signInUrl="/sign-in"
+              fallbackRedirectUrl="/"
+            />
+          ) : waitlist ? (
             <Waitlist
               signInUrl="/sign-in"
               afterJoinWaitlistUrl="/sign-up?requested=1"
@@ -1747,7 +1760,7 @@ async function start() {
         publishableKey={clerkPublishableKey}
         proxyUrl={clerkProxyUrl || undefined}
         signInUrl="/sign-in"
-        signUpUrl="/sign-up"
+        signUpUrl="/accept-invitation"
         waitlistUrl="/sign-up"
         signInFallbackRedirectUrl="/"
         signUpFallbackRedirectUrl="/"
