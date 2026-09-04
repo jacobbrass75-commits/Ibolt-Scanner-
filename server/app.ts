@@ -1,6 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { clerkMiddleware, createClerkClient } from "@clerk/express";
+import { clerkProxy } from "./clerk-proxy";
 import { once } from "node:events";
 import path from "node:path";
 import type { InventoryDatabase } from "./db";
@@ -44,15 +45,14 @@ export function createApp(
   app.use("/login", express.urlencoded({ extended: false, limit: "2kb" }));
   if (options.clerk) {
     const client = createClerkClient({ secretKey: options.clerk.secretKey });
+    if (options.clerk.proxyUrl)
+      app.use(clerkProxy({ ...options.clerk, proxyUrl: options.clerk.proxyUrl }));
     app.use(
       clerkMiddleware({
         clerkClient: client,
         publishableKey: options.clerk.publishableKey,
         secretKey: options.clerk.secretKey,
         proxyUrl: options.clerk.proxyUrl,
-        frontendApiProxy: options.clerk.proxyUrl
-          ? { enabled: true, path: new URL(options.clerk.proxyUrl).pathname }
-          : undefined,
         authorizedParties: options.publicOrigin
           ? [options.publicOrigin]
           : undefined,

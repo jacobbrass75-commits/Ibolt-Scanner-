@@ -19,6 +19,7 @@
     "user": "tsx scripts/manage-user.ts"
   },
   "dependencies": {
+    "@clerk/backend": "3.17.1",
     "@clerk/express": "^2.1.66",
     "@clerk/react": "^6.15.1",
     "@zxing/browser": "0.1.5",
