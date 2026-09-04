@@ -4,6 +4,12 @@ Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetz
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
+## Current deployment checkpoint — 2026-09-04
+
+Release `9b09a9f` is live with Clerk production Waitlist authentication and the same-origin `/__clerk` proxy. Email/password sign-in and the request-access page rendered successfully; unauthenticated inventory API access returned 401. Google sign-in is disabled because no production OAuth client is configured. Clerk's sign-in, invitation sign-up, and sign-out paths point at this application. An administrator invitation was issued for the owner, but first-account password creation and authenticated workflow verification still require the owner's participation.
+
+Linux type checking, all 26 tests, and the build passed. Verified snapshots before and after activation had identical SHA-256 and totals (700 products, 1 bin, 0 counts, 1394 audit rows, 3 imports). Only `iboltscan` restarted; nginx was validated and reloaded for the inventory proxy. The pre-Clerk environment and prior release remain available for rollback. Temporary credential-transfer copies were removed; the active secret is confined to the protected service environment. Revocation of the original unused Clerk setup key remains pending owner approval.
+
 ## Service layout
 
 | Item                 | Location                                                    |
@@ -20,7 +26,7 @@ The server is the operating database. On the configured PC, `Start Inventory.cmd
 
 The app runs as the dedicated `iboltscan` account with a 512 MB memory limit, a read-only application directory, and access to its own writable data and backup directories. Existing hosted apps retain their runtimes and ports. The repository contains no credentials or inventory data.
 
-## Sign-in and roles
+## Legacy sign-in and roles (rollback reference)
 
 Sign in with a named account through the normal sign-in page. The browser receives a random, HttpOnly, Secure, SameSite=Strict cookie lasting eight hours. Sessions end on sign-out, expiration, or an app restart. Saved counts use the authenticated account identity; the client cannot supply another operator's identity. Account passwords are stored as salted scrypt hashes, with sign-in throttling. HTTP Basic remains available for authenticated API clients over HTTPS.
 
