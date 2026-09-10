@@ -5,6 +5,7 @@ import { getAuth } from "@clerk/express";
 import type { AuthUser, Identity } from "./config";
 import { isLoopback } from "./config";
 import { loginPage, loginCss, safeReturn } from "./login";
+import { inventoryReturnTo } from "../shared/auth-routing";
 
 const derive = promisify(scrypt);
 export async function hashPassword(
@@ -129,6 +130,14 @@ export function clerkSecurity(options: {
       res
         .status(403)
         .json({ error: "Requests must come from this inventory app." });
+      return;
+    }
+    if (req.path === "/" && req.method === "GET" && !getUserId(req)) {
+      res.redirect(
+        303,
+        "/sign-in?returnTo=" +
+          encodeURIComponent(inventoryReturnTo(req.originalUrl)),
+      );
       return;
     }
     if (!req.path.startsWith("/api/")) {

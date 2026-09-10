@@ -4,7 +4,13 @@ Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetz
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
-## Current deployment checkpoint — 2026-09-04
+## Current deployment checkpoint — 2026-09-10
+
+The **Bin weights** page contains 116 source measurements from 85 worksheet rows, with 42 reference part weights applied to unique catalog matches. All 700 catalog records, the archived legacy bin, and count history were preserved. Eleven measurements across nine worksheet rows need a catalog match. Container tare and whether the source weights include the container remain unconfirmed, so the import created no operational bins or physical counts. The page supports measured setup after those details are checked. See [BIN-WEIGHTS.md](BIN-WEIGHTS.md).
+
+Schema 4 adds source bin measurements and includes them in backup manifests. Pre-import and post-import backups were verified, and a post-import snapshot was copied to the PC with its checksum verified. The inventory service, hourly backup timer, and Clerk authentication remain in place. Signed-out home-page visits are routed to the dedicated sign-in page with the requested inventory screen retained; this avoids mounting the path-based sign-in component outside its configured route.
+
+## Previous authentication checkpoint — 2026-09-04
 
 Release `602b1df` is live with Clerk production Waitlist authentication and the same-origin `/__clerk` proxy. The owner has created a password-enabled account with administrator access. This release fixes repeated `Set-Cookie` headers being overwritten by the Express SDK proxy, which caused the password step to forget the sign-in attempt. The application now uses Clerk's official backend proxy with a cookie-preserving Express response adapter. All 27 tests, type checking, and production builds passed locally and on the Linux server. Live HTTP checks confirmed all Clerk cookies are forwarded, and Brave retained the password step after navigation. Unauthenticated inventory API access still returns 401. Final password submission and authenticated inventory workflow verification require the owner's participation.
 

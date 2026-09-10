@@ -23,6 +23,7 @@ import {
   verifyPassword,
 } from "../server/security";
 import { loadConfig, type AuthUser, type Identity } from "../server/config";
+import { inventoryReturnTo } from "../shared/auth-routing";
 import {
   createBackup,
   restoreToNewFile,
@@ -476,12 +477,34 @@ test("Clerk approval pages stay public while inventory APIs require a verified u
     }),
   );
   app.get("/sign-up", (_req, res) => res.send("request access"));
+  app.get("/sign-in", (_req, res) => res.send("sign-in form"));
+  app.get("/", (_req, res) => res.send("inventory"));
   app.get("/api/whoami", (_req, res) => res.json(res.locals.identity));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const root = `http://127.0.0.1:${(server.address() as any).port}`;
   try {
     assert.equal((await fetch(root + "/sign-up")).status, 200);
+    const redirect = await fetch(root + "/?view=bin-weights", {
+      redirect: "manual",
+    });
+    assert.equal(redirect.status, 303);
+    assert.equal(
+      redirect.headers.get("location"),
+      "/sign-in?returnTo=%2F%3Fview%3Dbin-weights",
+    );
+    assert.equal(
+      await (await fetch(root + "/?view=bin-weights")).text(),
+      "sign-in form",
+    );
+    assert.equal(
+      await (
+        await fetch(root + "/?view=bin-weights", {
+          headers: { "x-fixture-user": "user_approved" },
+        })
+      ).text(),
+      "inventory",
+    );
     assert.equal((await fetch(root + "/api/whoami")).status, 401);
     for (let i = 0; i < 2; i++) {
       const response = await fetch(root + "/api/whoami", {
@@ -494,6 +517,22 @@ test("Clerk approval pages stay public while inventory APIs require a verified u
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test("inventory sign-in returns only to local root screens", () => {
+  for (const value of ["/", "/?view=bin-weights", "/?bin=IBOLT-123"])
+    assert.equal(inventoryReturnTo(value), value);
+  for (const value of [
+    undefined,
+    "https://other.example",
+    "//other.example",
+    "/\\other.example",
+    "/sign-in",
+    "/api/backup",
+    "/?view=\n//other.example",
+    "/ /other.example",
+  ])
+    assert.equal(inventoryReturnTo(value), "/");
 });
 
 test("browser sign-in uses secure expiring sessions, rejects cross-site login and revokes on logout", async () => {

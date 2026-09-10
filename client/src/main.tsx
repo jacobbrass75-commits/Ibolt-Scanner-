@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { BinWeights } from "./BinWeights";
+import { inventoryReturnTo } from "../../shared/auth-routing";
 import type {
   Bin,
   Product,
@@ -1712,6 +1713,9 @@ function QrLabel({
 function ClerkAuth() {
   const waitlist = window.location.pathname.startsWith("/sign-up");
   const invitation = window.location.pathname.startsWith("/accept-invitation");
+  const returnTo = inventoryReturnTo(
+    new URLSearchParams(window.location.search).get("returnTo"),
+  );
   return (
     <>
       <Show when="signed-out">
@@ -1750,7 +1754,7 @@ function ClerkAuth() {
               routing="path"
               path="/sign-in"
               waitlistUrl="/sign-up"
-              fallbackRedirectUrl="/"
+              fallbackRedirectUrl={returnTo}
             />
           )}
         </div>
