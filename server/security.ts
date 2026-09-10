@@ -132,6 +132,11 @@ export function clerkSecurity(options: {
         .json({ error: "Requests must come from this inventory app." });
       return;
     }
+    if (res.locals.warehouseIdentity) {
+      res.locals.identity = res.locals.warehouseIdentity;
+      next();
+      return;
+    }
     if (req.path === "/" && req.method === "GET" && !getUserId(req)) {
       res.redirect(
         303,
@@ -268,6 +273,11 @@ export function security(options: SecurityOptions): RequestHandler {
       !req.is("application/json")
     ) {
       res.status(415).json({ error: "Send JSON from the inventory app." });
+      return;
+    }
+    if (res.locals.warehouseIdentity) {
+      res.locals.identity = res.locals.warehouseIdentity;
+      next();
       return;
     }
     const localIdentity: Identity = {

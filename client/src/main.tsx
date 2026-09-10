@@ -43,6 +43,7 @@ import "./style.css";
 let clerkPublishableKey = "";
 let clerkProxyUrl = "";
 let clerkEnabled = false;
+let warehouseEnabled = false;
 
 async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
   const response = await fetch("/api" + url, {
@@ -53,8 +54,12 @@ async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
   if (!response.ok) {
     if (response.status === 401)
       window.location.assign(
-        (clerkEnabled ? "/sign-in?returnTo=" : "/login?returnTo=") +
-          encodeURIComponent(window.location.pathname + window.location.search),
+        warehouseEnabled
+          ? "/warehouse"
+          : (clerkEnabled ? "/sign-in?returnTo=" : "/login?returnTo=") +
+              encodeURIComponent(
+                window.location.pathname + window.location.search,
+              ),
       );
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `Request failed (${response.status}).`);
@@ -488,6 +493,18 @@ function App() {
             ? "Hosted inventory workspace"
             : "Local inventory workspace"}
           <p>Physical counts stay in this database.</p>
+          {status?.identity?.accessMode === "warehouse" && (
+            <>
+              <p>
+                Temporary warehouse access
+                <br />
+                Expires {date(status.identity.accessExpiresAt)}
+              </p>
+              <form action="/warehouse-exit" method="post">
+                <button type="submit">End access on this device</button>
+              </form>
+            </>
+          )}
           {status?.identity?.authenticated && (
             <>
               <p>
@@ -1772,13 +1789,14 @@ async function start() {
   });
   if (!response.ok) throw new Error("Inventory authentication is unavailable.");
   const config = (await response.json()) as {
-    provider: "clerk" | "local";
+    provider: "clerk" | "local" | "warehouse";
     clerkPublishableKey: string | null;
     clerkProxyUrl: string | null;
   };
   clerkPublishableKey = config.clerkPublishableKey || "";
   clerkProxyUrl = config.clerkProxyUrl || "";
   clerkEnabled = config.provider === "clerk" && Boolean(clerkPublishableKey);
+  warehouseEnabled = config.provider === "warehouse";
   createRoot(document.getElementById("root")!).render(
     clerkEnabled ? (
       <ClerkProvider

@@ -7,10 +7,16 @@ import path from "node:path";
 import type { InventoryDatabase } from "./db";
 import { InventoryStore } from "./store";
 import { clerkSecurity, security, requireRole } from "./security";
-import type { AuthUser, ClerkConfig, Identity } from "./config";
+import type {
+  AuthUser,
+  ClerkConfig,
+  Identity,
+  WarehouseAccessConfig,
+} from "./config";
 import { InventoryError } from "./errors";
 import { createBackup } from "./backups";
 import { binWeights, setUpImportedBin } from "./bin-weights";
+import { warehouseAccess } from "./warehouse-access";
 
 const text = z.string().trim().max(2000);
 const positive = z.number().finite().positive().max(1e9);
@@ -32,6 +38,7 @@ export function createApp(
   options: {
     users?: AuthUser[];
     clerk?: ClerkConfig;
+    warehouseAccess?: WarehouseAccessConfig;
     password?: string;
     publicOrigin?: string;
     development?: boolean;
@@ -43,6 +50,7 @@ export function createApp(
   const app = express(),
     store = new InventoryStore(db);
   app.disable("x-powered-by");
+  app.use(warehouseAccess(options.warehouseAccess, options));
   app.use("/login", express.urlencoded({ extended: false, limit: "2kb" }));
   if (options.clerk) {
     const client = createClerkClient({ secretKey: options.clerk.secretKey });
@@ -50,16 +58,17 @@ export function createApp(
       app.use(
         clerkProxy({ ...options.clerk, proxyUrl: options.clerk.proxyUrl }),
       );
-    app.use(
-      clerkMiddleware({
-        clerkClient: client,
-        publishableKey: options.clerk.publishableKey,
-        secretKey: options.clerk.secretKey,
-        proxyUrl: options.clerk.proxyUrl,
-        authorizedParties: options.publicOrigin
-          ? [options.publicOrigin]
-          : undefined,
-      }),
+    const clerkRequest = clerkMiddleware({
+      clerkClient: client,
+      publishableKey: options.clerk.publishableKey,
+      secretKey: options.clerk.secretKey,
+      proxyUrl: options.clerk.proxyUrl,
+      authorizedParties: options.publicOrigin
+        ? [options.publicOrigin]
+        : undefined,
+    });
+    app.use((req, res, next) =>
+      res.locals.warehouseIdentity ? next() : clerkRequest(req, res, next),
     );
     app.use(
       clerkSecurity({
@@ -71,9 +80,17 @@ export function createApp(
   } else app.use(security(options));
   app.get("/auth-config", (_req, res) =>
     res.json({
-      provider: options.clerk ? "clerk" : "local",
-      clerkPublishableKey: options.clerk?.publishableKey || null,
-      clerkProxyUrl: options.clerk?.proxyUrl || null,
+      provider: res.locals.warehouseIdentity
+        ? "warehouse"
+        : options.clerk
+          ? "clerk"
+          : "local",
+      clerkPublishableKey: res.locals.warehouseIdentity
+        ? null
+        : options.clerk?.publishableKey || null,
+      clerkProxyUrl: res.locals.warehouseIdentity
+        ? null
+        : options.clerk?.proxyUrl || null,
     }),
   );
   app.use(express.json({ limit: "200kb" }));
@@ -234,6 +251,14 @@ export function createApp(
       if (input.save && identity.role === "viewer")
         throw new InventoryError("Your account cannot save counts.", 403);
       if (identity.authenticated) input.countedBy = identity.displayName;
+      if (
+        input.save &&
+        identity.accessMode === "warehouse" &&
+        !input.countedBy.trim()
+      )
+        throw new InventoryError(
+          "Enter your name in Counted by before saving a warehouse count.",
+        );
       res.json(actingStore(res).calculate(input));
     }),
   );

@@ -31,7 +31,10 @@ export const usersSchema = z
 export type AuthUser = z.infer<typeof userSchema>;
 export type Identity = Pick<AuthUser, "username" | "displayName" | "role"> & {
   authenticated: boolean;
+  accessMode?: "warehouse";
+  accessExpiresAt?: string;
 };
+export type WarehouseAccessConfig = { tokenHash: string; expiresAt: string };
 export type ClerkConfig = {
   publishableKey: string;
   secretKey: string;
@@ -69,6 +72,20 @@ export function loadConfig(env = process.env) {
   }
   const users = env.AUTH_USERS_FILE
     ? loadUsers(env.AUTH_USERS_FILE)
+    : undefined;
+  const warehouseHash = env.WAREHOUSE_ACCESS_TOKEN_SHA256?.trim();
+  const warehouseExpiry = env.WAREHOUSE_ACCESS_EXPIRES_AT?.trim();
+  if (Boolean(warehouseHash) !== Boolean(warehouseExpiry))
+    throw new Error(
+      "Warehouse access requires both a token hash and an expiry.",
+    );
+  const warehouseAccess = warehouseHash
+    ? z
+        .object({
+          tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
+          expiresAt: z.string().datetime({ offset: true }),
+        })
+        .parse({ tokenHash: warehouseHash, expiresAt: warehouseExpiry })
     : undefined;
   const clerkPublishableKey = env.CLERK_PUBLISHABLE_KEY?.trim();
   const clerkSecretKey = env.CLERK_SECRET_KEY?.trim();
@@ -137,6 +154,7 @@ export function loadConfig(env = process.env) {
     publicOrigin,
     users,
     clerk,
+    warehouseAccess,
     password: env.ACCESS_PASSWORD,
     databasePath,
     backupDir,
