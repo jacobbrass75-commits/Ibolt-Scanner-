@@ -10,6 +10,29 @@
   --accent: #1a6b63;
   --dark: #162d41;
 }
+.weight-sheet-intro {
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.weight-sheet-intro p {
+  line-height: 1.6;
+}
+.weight-sheet-intro h2 .hint {
+  font-weight: 400;
+  font-size: 14px;
+}
+.weight-sheet-callout {
+  padding: 14px 18px;
+  border-left: 3px solid #ad8134;
+  background: #fff9ec;
+  border-radius: 4px;
+}
+.weight-sheet-intro form {
+  max-width: 850px;
+}
+.weight-sheet-intro select {
+  max-width: 100%;
+}
 * {
   box-sizing: border-box;
 }

@@ -10,6 +10,7 @@ import { clerkSecurity, security, requireRole } from "./security";
 import type { AuthUser, ClerkConfig, Identity } from "./config";
 import { InventoryError } from "./errors";
 import { createBackup } from "./backups";
+import { binWeights, setUpImportedBin } from "./bin-weights";
 
 const text = z.string().trim().max(2000);
 const positive = z.number().finite().positive().max(1e9);
@@ -46,7 +47,9 @@ export function createApp(
   if (options.clerk) {
     const client = createClerkClient({ secretKey: options.clerk.secretKey });
     if (options.clerk.proxyUrl)
-      app.use(clerkProxy({ ...options.clerk, proxyUrl: options.clerk.proxyUrl }));
+      app.use(
+        clerkProxy({ ...options.clerk, proxyUrl: options.clerk.proxyUrl }),
+      );
     app.use(
       clerkMiddleware({
         clerkClient: client,
@@ -111,6 +114,7 @@ export function createApp(
         (p) => p.weightStatus === "missing" || p.weightStatus === "conflict",
       ).length,
       bins: store.bins().length,
+      binMeasurements: binWeights(store).length,
       counts: store.countTotal(),
       imports: db
         .prepare(
@@ -121,6 +125,25 @@ export function createApp(
     });
   });
   app.get("/api/products", (_req, res) => res.json(store.products()));
+  app.get("/api/bin-weights", (_req, res) => res.json(binWeights(store)));
+  app.post(
+    "/api/bin-weights/:id/bin",
+    requireRole("admin", "operator"),
+    route((req, res) => {
+      const input = z
+        .object({
+          ...binFields,
+          productId: text.min(1),
+          expectedUpdatedAt: text.min(1),
+          weightsConfirmed: z.literal(true),
+        })
+        .strict()
+        .parse(req.body);
+      res
+        .status(201)
+        .json(setUpImportedBin(actingStore(res), req.params.id, input));
+    }),
+  );
   app.patch(
     "/api/products/:id",
     requireRole("admin", "operator"),

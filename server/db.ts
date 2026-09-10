@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export function openDatabase(
   filename = process.env.DATABASE_PATH || "./data/inventory.sqlite",
 ) {
@@ -83,6 +83,16 @@ export function openDatabase(
     );
     CREATE TABLE IF NOT EXISTS imports (
       id INTEGER PRIMARY KEY, sourceFile TEXT NOT NULL, sourceHash TEXT NOT NULL UNIQUE, summary TEXT NOT NULL, createdAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS bin_weights (
+      id TEXT PRIMARY KEY, sourceHash TEXT NOT NULL REFERENCES imports(sourceHash), sourceFile TEXT NOT NULL,
+      sheet TEXT NOT NULL, sourceRow INTEGER NOT NULL, sourceCell TEXT NOT NULL,
+      sku TEXT NOT NULL, binNumber INTEGER NOT NULL, rawPartWeight TEXT NOT NULL,
+      partWeightOz REAL CHECK(partWeightOz > 0), rawBinWeight TEXT NOT NULL,
+      binWeightLb REAL NOT NULL CHECK(binWeightLb >= 0),
+      productId TEXT REFERENCES products(id), candidateProductIds TEXT NOT NULL DEFAULT '[]',
+      binId TEXT UNIQUE REFERENCES bins(id), createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+      UNIQUE(sourceHash, sheet, sourceCell)
     );
   `);
     if (version < 2) {

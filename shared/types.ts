@@ -64,3 +64,22 @@ export interface Lookup {
   bins: Bin[];
   products: Product[];
 }
+export interface BinWeight {
+  id: string;
+  sourceHash: string;
+  sourceFile: string;
+  sheet: string;
+  sourceRow: number;
+  sourceCell: string;
+  sku: string;
+  binNumber: number;
+  rawPartWeight: string;
+  partWeightOz: number | null;
+  rawBinWeight: string;
+  binWeightLb: number;
+  productId: string | null;
+  candidateProductIds: string[];
+  binId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

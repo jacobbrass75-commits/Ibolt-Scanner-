@@ -4,7 +4,7 @@ A standalone inventory application for product weights, USB and camera scanning,
 
 ## Open the hosted inventory
 
-Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. The current release uses named local accounts; the Clerk migration adds `/sign-up` as an approval-request page and `/sign-in` for approved users. The existing Hetzner server is reused at no added server cost. Authentication, HTTPS, automatic restart, hourly verified backups, and recovery are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. The current release uses Clerk, with `/sign-up` as an approval-request page and `/sign-in` for approved users. The existing Hetzner server is reused at no added server cost. Authentication, HTTPS, automatic restart, hourly verified backups, and recovery are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Use the hosted database for all new measurements and counts. The former PC database is preserved; it does not synchronize automatically.
 
@@ -26,7 +26,7 @@ For another computer, follow [Set up inventory at work](docs/WORK-SETUP.md). Use
 
 ## Inventory data
 
-The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The hosted catalog includes the verified Mac export received September 3, 2026 UTC, reconciled with the existing PC catalog.
+The hosted database is `/var/lib/iboltscan/inventory.sqlite`; the preserved PC copy is `data/inventory.sqlite`. Git does not include inventory records, backups, source workbooks, or credentials. The hosted catalog includes the verified Mac export received September 3, 2026 UTC, reconciled with the existing PC catalog. The following totals describe that initial migration; later measured and imported weights are shown in the application.
 
 - 700 catalog entries: all 627 Shopify variant IDs plus 73 workbook part entries. All 612 Mac parent/source records are represented in provenance, and all 565 earlier PC records retain their IDs.
 - 131 imported reference weights, six weight issues requiring physical review, and 563 entries without a part weight. No imported weight is marked physically verified.
@@ -48,6 +48,10 @@ npm run import:catalog -- "C:\path\catalog-backup.sqlite"
 The preview reports insertions, merges, preserved measurements, barcode collisions, and a `planHash` tied to both the source and current destination. Apply with `--apply --expect-plan <planHash>`; use `--expect-source <SHA256>` to verify a supplied transfer manifest. An existing destination is backed up automatically before any change. The import refuses stale previews or new barcode/SKU collisions by default. After reviewing source identities, `--allow-shared-codes` explicitly retains distinct items behind shared codes; scanning them requires selection. Measured weights and assigned barcodes remain intact, while conflicting unverified weights are flagged for physical review.
 
 The importer also accepts `inventory-transfer.json.txt` exports from the Mac handoff. Catalog import normally leaves bins and counts untouched. The explicit `--archive-legacy-bins` option preserves source bins as archived history and rejects source counts, missing product identities, or existing bin/QR collisions. It is intended for the reviewed historical test bin, not an operational count-history migration. Catalog and historical-bin changes apply in one transaction. SQLite sources are read-only, with active source WALs rejected. Integration credentials and unrelated tables are excluded. Shopify shipping weights are never treated as measured part weights. The compiled command is `node dist/scripts/import-catalog.js <source> --database <destination>`.
+
+### Import bin-weight sheets
+
+Use **Bin weights** to review supplied pound measurements and prepare measured bins. `npm run import:bin-weights` previews worksheets with `Part`, `Part (oz)`, and `Bin N (Lbs)` columns, preserves source cells, and updates uniquely matched reference part weights. Verified weights, bin calibrations, and physical count history remain intact. See [docs/BIN-WEIGHTS.md](docs/BIN-WEIGHTS.md) for the import, setup, and recovery steps.
 
 ## Workflow
 

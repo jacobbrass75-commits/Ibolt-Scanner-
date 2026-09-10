@@ -29,6 +29,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import QRCode from "qrcode";
+import { BinWeights } from "./BinWeights";
 import type {
   Bin,
   Product,
@@ -194,7 +195,11 @@ function CameraScanner({
   );
 }
 function App() {
-  const [tab, setTab] = useState("count");
+  const [tab, setTab] = useState(
+    new URLSearchParams(window.location.search).get("view") === "bin-weights"
+      ? "bin-weights"
+      : "count",
+  );
   const [products, setProducts] = useState<Product[]>([]),
     [bins, setBins] = useState<Bin[]>([]),
     [counts, setCounts] = useState<Count[]>([]);
@@ -440,6 +445,7 @@ function App() {
     { id: "count", icon: ScanLine, label: "Scan & count" },
     { id: "catalog", icon: Scale, label: "Catalog & weights" },
     { id: "bins", icon: Boxes, label: "Bins & labels" },
+    { id: "bin-weights", icon: Scale, label: "Bin weights" },
     { id: "history", icon: ClipboardList, label: "Count history" },
   ];
   const changeTab = (next: string) => {
@@ -562,7 +568,9 @@ function App() {
                     ? "Find every catalog item and prepare its measured unit weight."
                     : tab === "bins"
                       ? "Keep locations, tare weights, and bin labels together."
-                      : "A permanent record of your physical inventory counts."}
+                      : tab === "bin-weights"
+                        ? "Review the worksheet measurements and prepare your bins for counting."
+                        : "A permanent record of your physical inventory counts."}
               </p>
             </div>
             {tab === "count" && (
@@ -1102,6 +1110,19 @@ function App() {
                 )}
               </div>
             </section>
+          ) : tab === "bin-weights" ? (
+            <BinWeights
+              products={products}
+              canEdit={canEdit}
+              api={api}
+              created={async (bin) => {
+                await reload();
+                setNotice(
+                  "Bin created from the worksheet. Weigh it now to save a current count.",
+                );
+                selectBin(bin);
+              }}
+            />
           ) : tab === "bins" ? (
             <section className="panel">
               <div className="toolbar">

@@ -40,6 +40,12 @@ export function inspectBackup(filename: string) {
           total: number;
         }
       ).total;
+    if (schema >= 4)
+      totals.bin_weights = (
+        db.prepare("SELECT count(*) AS total FROM bin_weights").get() as {
+          total: number;
+        }
+      ).total;
     return { schema, totals };
   } finally {
     db.close();
