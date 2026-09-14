@@ -7,7 +7,6 @@ import {
   SignUp,
   SignOutButton,
   UserButton,
-  Waitlist,
 } from "@clerk/react";
 import {
   Boxes,
@@ -1728,7 +1727,7 @@ function QrLabel({
   );
 }
 function ClerkAuth() {
-  const waitlist = window.location.pathname.startsWith("/sign-up");
+  const signUp = window.location.pathname.startsWith("/sign-up");
   const invitation = window.location.pathname.startsWith("/accept-invitation");
   const returnTo = inventoryReturnTo(
     new URLSearchParams(window.location.search).get("returnTo"),
@@ -1742,16 +1741,16 @@ function ClerkAuth() {
               iBolt <span>Inventory</span>
             </div>
             <h1>
-              {waitlist
-                ? "Request inventory access"
+              {signUp
+                ? "Create your inventory account"
                 : invitation
                   ? "Accept inventory invitation"
                   : "Sign in to inventory"}
             </h1>
             <p>
-              {waitlist
-                ? "Submit your work email. An administrator must approve it before you can use the shared inventory."
-                : "Approved operators can scan parts, record measured weights, and save physical counts."}
+              {signUp
+                ? "Create an account to scan parts, record weights, and save warehouse counts."
+                : "Sign in to use the shared inventory, measured weights, and physical counts."}
             </p>
           </div>
           {invitation ? (
@@ -1759,18 +1758,20 @@ function ClerkAuth() {
               routing="path"
               path="/accept-invitation"
               signInUrl="/sign-in"
-              fallbackRedirectUrl="/"
+              fallbackRedirectUrl={returnTo}
             />
-          ) : waitlist ? (
-            <Waitlist
+          ) : signUp ? (
+            <SignUp
+              routing="path"
+              path="/sign-up"
               signInUrl="/sign-in"
-              afterJoinWaitlistUrl="/sign-up?requested=1"
+              fallbackRedirectUrl={returnTo}
             />
           ) : (
             <SignIn
               routing="path"
               path="/sign-in"
-              waitlistUrl="/sign-up"
+              signUpUrl={"/sign-up?returnTo=" + encodeURIComponent(returnTo)}
               fallbackRedirectUrl={returnTo}
             />
           )}
@@ -1803,8 +1804,7 @@ async function start() {
         publishableKey={clerkPublishableKey}
         proxyUrl={clerkProxyUrl || undefined}
         signInUrl="/sign-in"
-        signUpUrl="/accept-invitation"
-        waitlistUrl="/sign-up"
+        signUpUrl="/sign-up"
         signInFallbackRedirectUrl="/"
         signUpFallbackRedirectUrl="/"
       >
