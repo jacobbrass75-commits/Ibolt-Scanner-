@@ -4,6 +4,12 @@ Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetz
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
+## Current authentication checkpoint — 2026-09-14
+
+Release **0f97db4** is live with open Clerk registration and bounded session recovery. The original production application was transferred into Jacob's **Ibolt** organization, preserving its keys and existing accounts. The live signup page displays the normal email/password form; anonymous inventory APIs still return 401. Google OAuth setup awaits acceptance of Google's required User Data Policy and subsequent client configuration. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the exact activation state.
+
+Type checking, all 42 tests and production builds passed locally and on Linux. A verified snapshot preceded deployment. All six table fingerprints and the protected environment were identical before and after activation: 700 products, 17 bins, 19 counts, 1571 audit rows, 4 imports and 116 bin measurements. The service and hourly backup timer are active; the snapshot was verified on the PC too. The previous release remains available for rollback.
+
 ## Inventory checkpoint — 2026-09-10
 
 The **Bin weights** page contains 116 source measurements from 85 worksheet rows, with 42 reference part weights applied to unique catalog matches. All 700 catalog records, the archived legacy bin, and count history were preserved. Eleven measurements across nine worksheet rows need a catalog match. Container tare and whether the source weights include the container remain unconfirmed, so the import created no operational bins or physical counts. The page supports measured setup after those details are checked. See [BIN-WEIGHTS.md](BIN-WEIGHTS.md).

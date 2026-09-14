@@ -10,9 +10,13 @@ The original live **iBolt Inventory** application (`app_3IsKD3CMwxmMbH8PouoYGILf
 
 The client now uses Clerk `SignUp` at `/sign-up`, with a normal sign-up link from `/sign-in`. `/accept-invitation` remains supported for existing invitations. Successful authentication returns to a validated inventory screen. Google buttons are supplied by Clerk when its Google connection is enabled; a frontend code change alone cannot enable Google OAuth.
 
-On September 14, the organization transfer completed, production **Access mode: Open** was saved, and the allowlist was disabled. Production Google OAuth configuration and deployment of the client changes are in progress. These completed settings do not yet establish that Google signup or the full live sign-in flow works; end-to-end browser verification remains required.
+On September 14, the organization transfer completed, production **Access mode: Open** was saved, and the allowlist was disabled. The live Clerk environment reports `sign_up.mode = public` and the signup URL is `https://inventory.89.167.10.34.nip.io/sign-up`.
 
-Validation for the pending client change: `npm run check`, all **42 tests**, and `npm run build` passed. The six new tests cover token readiness, one refresh after rejection, persistent rejection, missing sessions, mutation retry boundaries, and safe return destinations. Live Google OAuth and browser QA remain pending.
+Release **0f97db4** was deployed at 19:20 UTC. The live page shows **Create your inventory account**, an email and password signup form, and the regular Sign in link. The signed-out API returns 401. A verified backup preceded activation, and fingerprints for all six inventory tables matched before and after: 700 products, 17 bins, 19 counts, 1571 audit rows, 4 imports and 116 bin measurements. Environment contents were unchanged. The backup was also verified in the PC's `backups/remote` directory.
+
+`npm run check`, all **42 tests**, and `npm run build` passed locally and on Linux. The six new tests cover token readiness, one refresh after rejection, persistent rejection, missing sessions, mutation retry boundaries, and safe return destinations. A disposable local database loaded the workspace and direct bin-weight route successfully. The live email signup form is verified; actual account creation, authenticated API access and the full Google sign-in flow still require account-level verification.
+
+Google OAuth is **not enabled yet**. The dedicated Google Cloud project `iboltscan-oauth-2026` (iBOLT Scan) exists in Jacob's account. Branding, support/contact email and External audience were entered; the setup is paused at Google's required **API Services: User Data Policy** acceptance awaiting explicit owner approval. No OAuth client or secret has been created. Next: complete setup, create a web OAuth client, publish the Google audience for public use, then enable the Clerk production Google connection with the generated credentials. The exact callback displayed by Clerk is `https://inventory.89.167.10.34.nip.io/__clerk/v1/oauth_callback`.
 
 ## Request authentication and recovery
 

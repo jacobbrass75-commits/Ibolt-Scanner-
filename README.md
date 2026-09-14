@@ -4,7 +4,7 @@ A standalone inventory application for product weights, USB and camera scanning,
 
 ## Open the hosted inventory
 
-Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. Authentication uses Clerk. The original live **iBolt Inventory** application now belongs to Jacob's **Ibolt** organization, with open registration saved and the allowlist disabled. Google OAuth configuration and deployment of the `/sign-up` and sign-in recovery changes are still in progress; live Google sign-in is not yet verified. See [docs/GOOGLE-SIGN-IN.md](docs/GOOGLE-SIGN-IN.md) for the current authentication checkpoint. The existing Hetzner server is reused at no added server cost. HTTPS, automatic restart, hourly verified backups, and recovery are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Open **https://inventory.89.167.10.34.nip.io**. On this configured PC, double-click **Start Inventory.cmd** to open the same hosted app. Authentication uses Clerk. The original live **iBolt Inventory** application now belongs to Jacob's **Ibolt** organization, with open registration saved and the allowlist disabled. Release `0f97db4` is live with the normal `/sign-up` form and bounded sign-in recovery. Google OAuth setup is paused at its required User Data Policy acceptance and is not enabled yet. See [docs/GOOGLE-SIGN-IN.md](docs/GOOGLE-SIGN-IN.md) for the current authentication checkpoint. The existing Hetzner server is reused at no added server cost. HTTPS, automatic restart, hourly verified backups, and recovery are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Use the hosted database for all new measurements and counts. The former PC database is preserved; it does not synchronize automatically.
 
@@ -85,7 +85,7 @@ npm run build
 
 `server/` contains the Express API, SQLite schema, inventory rules, and authentication. `client/` contains the React UI. `scripts/catalog.ts` reads the workbook and legacy catalog. Tests use isolated databases; browser QA must also use a disposable copy and a different port.
 
-The pending Clerk client update obtains a session token before API requests and sends Bearer authentication. `shared/clerk-request.ts` allows one fresh-token retry after HTTP 401; persistent rejection opens explicit reconnect/sign-out controls instead of a redirect loop. Other failures do not automatically replay inventory mutations. Server-side session verification and role checks remain in force. `shared/auth-routing.ts` limits post-sign-in destinations to inventory root screens. Type checking, all 42 tests, and the production build passed for this change; live activation is tracked separately in the Google sign-in document.
+The Clerk client obtains a session token before API requests and sends Bearer authentication. `shared/clerk-request.ts` allows one fresh-token retry after HTTP 401; persistent rejection opens explicit reconnect/sign-out controls instead of a redirect loop. Other failures do not automatically replay inventory mutations. Server-side session verification and role checks remain in force. `shared/auth-routing.ts` limits post-sign-in destinations to inventory root screens. Type checking, all 42 tests, and the production build passed for this change; live activation is tracked separately in the Google sign-in document.
 
 ## Headless server
 
