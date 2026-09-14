@@ -6,3 +6,11 @@ export function inventoryReturnTo(value: unknown): string {
     ? value
     : "/";
 }
+
+export function inventoryScreen(pathname: string, search: string): string {
+  return inventoryReturnTo(
+    pathname === "/"
+      ? pathname + search
+      : new URLSearchParams(search).get("returnTo"),
+  );
+}

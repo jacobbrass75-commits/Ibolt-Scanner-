@@ -7,6 +7,8 @@ import {
   SignUp,
   SignOutButton,
   UserButton,
+  getToken,
+  useClerk,
 } from "@clerk/react";
 import {
   Boxes,
@@ -29,7 +31,11 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { BinWeights } from "./BinWeights";
-import { inventoryReturnTo } from "../../shared/auth-routing";
+import { inventoryReturnTo, inventoryScreen } from "../../shared/auth-routing";
+import {
+  createClerkRequest,
+  InventorySessionError,
+} from "../../shared/clerk-request";
 import type {
   Bin,
   Product,
@@ -44,20 +50,34 @@ let clerkProxyUrl = "";
 let clerkEnabled = false;
 let warehouseEnabled = false;
 
+const clerkRequest = createClerkRequest(getToken);
+async function inventoryRequest(url: string, init?: RequestInit) {
+  try {
+    return await (clerkEnabled ? clerkRequest(url, init) : fetch(url, init));
+  } catch (error) {
+    if (error instanceof InventorySessionError)
+      window.dispatchEvent(new Event("inventory-session-error"));
+    throw error;
+  }
+}
+
 async function api<T>(url: string, method = "GET", data?: unknown): Promise<T> {
-  const response = await fetch("/api" + url, {
+  const response = await inventoryRequest("/api" + url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : undefined,
     body: data ? JSON.stringify(data) : undefined,
   });
   if (!response.ok) {
-    if (response.status === 401)
+    if (response.status === 401 && !clerkEnabled)
       window.location.assign(
         warehouseEnabled
           ? "/warehouse"
-          : (clerkEnabled ? "/sign-in?returnTo=" : "/login?returnTo=") +
+          : "/login?returnTo=" +
               encodeURIComponent(
-                window.location.pathname + window.location.search,
+                inventoryScreen(
+                  window.location.pathname,
+                  window.location.search,
+                ),
               ),
       );
     const error = await response.json().catch(() => ({}));
@@ -201,7 +221,10 @@ function CameraScanner({
 }
 function App() {
   const [tab, setTab] = useState(
-    new URLSearchParams(window.location.search).get("view") === "bin-weights"
+    new URL(
+      inventoryScreen(window.location.pathname, window.location.search),
+      window.location.origin,
+    ).searchParams.get("view") === "bin-weights"
       ? "bin-weights"
       : "count",
   );
@@ -255,6 +278,12 @@ function App() {
       ),
       api("/status"),
     ]);
+    if (clerkEnabled && window.location.pathname !== "/")
+      window.history.replaceState(
+        null,
+        "",
+        inventoryScreen(window.location.pathname, window.location.search),
+      );
     setProducts(p);
     setBins(b);
     setCounts(c.items);
@@ -290,6 +319,15 @@ function App() {
         .catch(() => setConnected(false));
     }, 30000);
     return () => clearInterval(interval);
+  }, []);
+  useEffect(() => {
+    const recovered = () =>
+      reload()
+        .then(() => setError(""))
+        .catch((e) => setError(e.message));
+    window.addEventListener("inventory-session-recovered", recovered);
+    return () =>
+      window.removeEventListener("inventory-session-recovered", recovered);
   }, []);
   useEffect(() => {
     localStorage.setItem("inventory-operator", operator);
@@ -331,7 +369,10 @@ function App() {
   useEffect(() => {
     if (loading || initialized.current) return;
     initialized.current = true;
-    const query = new URLSearchParams(location.search);
+    const query = new URL(
+      inventoryScreen(window.location.pathname, window.location.search),
+      window.location.origin,
+    ).searchParams;
     const code = query.get("bin") || query.get("code") || query.get("qr");
     if (code) {
       setScan(code);
@@ -530,7 +571,9 @@ function App() {
           disabled={busy || !isAdmin}
           onClick={() =>
             run(async () => {
-              const response = await fetch("/api/backup", { method: "POST" });
+              const response = await inventoryRequest("/api/backup", {
+                method: "POST",
+              });
               if (!response.ok) {
                 const body = await response.json().catch(() => ({}));
                 throw new Error(body.error || "Backup failed.");
@@ -1726,6 +1769,95 @@ function QrLabel({
     </Modal>
   );
 }
+function SessionRecovery() {
+  const clerk = useClerk();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const rejected = () => setFailed(true);
+    window.addEventListener("inventory-session-error", rejected);
+    return () =>
+      window.removeEventListener("inventory-session-error", rejected);
+  }, []);
+  useEffect(() => {
+    if (failed) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [failed]);
+  return (
+    <dialog
+      ref={dialog}
+      onCancel={(event) => event.preventDefault()}
+      aria-labelledby="session-recovery-title"
+    >
+      <h2 id="session-recovery-title">Reconnect to inventory</h2>
+      <p>
+        Your sign-in could not be verified. Retry the connection or sign out and
+        sign in again.
+      </p>
+      <p className="hint">
+        Your open form stays here while you retry. Signing out will discard
+        unsaved form entries.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="modal-actions">
+        <button
+          type="button"
+          className="primary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await api("/status");
+              setFailed(false);
+              window.dispatchEvent(new Event("inventory-session-recovered"));
+            } catch (error) {
+              setError(
+                error instanceof Error
+                  ? error.message
+                  : "Unable to reconnect. Try signing in again.",
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Connecting…" : "Retry connection"}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await clerk.signOut({
+                redirectUrl:
+                  "/sign-in?returnTo=" +
+                  encodeURIComponent(
+                    inventoryScreen(
+                      window.location.pathname,
+                      window.location.search,
+                    ),
+                  ),
+              });
+            } catch {
+              setError(
+                "Sign-out could not finish. Check your connection and retry.",
+              );
+              setBusy(false);
+            }
+          }}
+        >
+          Sign out and sign in again
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 function ClerkAuth() {
   const signUp = window.location.pathname.startsWith("/sign-up");
   const invitation = window.location.pathname.startsWith("/accept-invitation");
@@ -1778,6 +1910,7 @@ function ClerkAuth() {
         </div>
       </Show>
       <Show when="signed-in">
+        <SessionRecovery />
         <App />
       </Show>
     </>

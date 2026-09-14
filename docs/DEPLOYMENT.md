@@ -4,7 +4,7 @@ Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetz
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
-## Current deployment checkpoint — 2026-09-10
+## Inventory checkpoint — 2026-09-10
 
 The **Bin weights** page contains 116 source measurements from 85 worksheet rows, with 42 reference part weights applied to unique catalog matches. All 700 catalog records, the archived legacy bin, and count history were preserved. Eleven measurements across nine worksheet rows need a catalog match. Container tare and whether the source weights include the container remain unconfirmed, so the import created no operational bins or physical counts. The page supports measured setup after those details are checked. See [BIN-WEIGHTS.md](BIN-WEIGHTS.md).
 
@@ -12,7 +12,7 @@ Schema 4 adds source bin measurements and includes them in backup manifests. Pre
 
 ## Previous authentication checkpoint — 2026-09-04
 
-Release `602b1df` is live with Clerk production Waitlist authentication and the same-origin `/__clerk` proxy. The owner has created a password-enabled account with administrator access. This release fixes repeated `Set-Cookie` headers being overwritten by the Express SDK proxy, which caused the password step to forget the sign-in attempt. The application now uses Clerk's official backend proxy with a cookie-preserving Express response adapter. All 27 tests, type checking, and production builds passed locally and on the Linux server. Live HTTP checks confirmed all Clerk cookies are forwarded, and Brave retained the password step after navigation. Unauthenticated inventory API access still returns 401. Final password submission and authenticated inventory workflow verification require the owner's participation.
+At that checkpoint, release `602b1df` used Clerk production Waitlist authentication and the same-origin `/__clerk` proxy. The owner has created a password-enabled account with administrator access. This release fixes repeated `Set-Cookie` headers being overwritten by the Express SDK proxy, which caused the password step to forget the sign-in attempt. The application now uses Clerk's official backend proxy with a cookie-preserving Express response adapter. All 27 tests, type checking, and production builds passed locally and on the Linux server. Live HTTP checks confirmed all Clerk cookies are forwarded, and Brave retained the password step after navigation. Unauthenticated inventory API access still returns 401. Final password submission and authenticated inventory workflow verification require the owner's participation.
 
 An operator invitation was issued for the requested coworker and delivered through Gmail using Clerk's private proxy-aware invitation URL. No account was created on the coworker's behalf; she must complete signup. No inventory records were changed. Google sign-in remains disabled because no production OAuth client is configured. Clerk's sign-in, invitation sign-up, and sign-out paths point at this application.
 
@@ -54,7 +54,7 @@ systemctl restart iboltscan
 
 The tool also accepts the password on stdin for private automation. Do not pass it as a command argument, write it into Git, or print it in logs. Editing accounts requires a restart, which revokes existing sessions.
 
-### Clerk approval mode
+### Clerk open registration
 
 The application can use Clerk instead of the local users file. Configure the two runtime values below in the protected service environment; never commit or print the secret key:
 
@@ -64,11 +64,11 @@ CLERK_SECRET_KEY=sk_...
 CLERK_PROXY_URL=https://inventory.89.167.10.34.nip.io/__clerk
 ```
 
-Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publishable key to the browser through `/auth-config`; the secret key stays server-side. Clerk's Express middleware verifies sessions with `authorizedParties` restricted to `PUBLIC_ORIGIN`. Approved users default to the `operator` role. Set Clerk public metadata `role` to `admin`, `operator`, or `viewer` when a different role is required.
+Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publishable key to the browser through `/auth-config`; the secret key stays server-side. Clerk's Express middleware verifies sessions with `authorizedParties` restricted to `PUBLIC_ORIGIN`. Authenticated users default to the `operator` role. Set Clerk public metadata `role` to `admin`, `operator`, or `viewer` when a different role is required.
 
-In the Clerk Dashboard, set **Access mode** to **Waitlist** and keep email enabled. `/sign-up` becomes the request-access page. An administrator approves a request from Clerk's Waitlist screen; Clerk then emails the invitation. Until approval, the requester cannot create an active inventory session. `/sign-in` is for approved users only.
+In Jacob's Ibolt Clerk organization, set **Access mode** to **Open** and leave the email allowlist disabled. `/sign-up` creates an account directly; no administrator approval is required. Keep email verification enabled. Production Google sign-in requires the dedicated OAuth connection described in [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md).
 
-The app embeds Clerk's invitation sign-up component at `/accept-invitation`. For this proxy-only deployment, create invitations with `redirectUrl` set to that HTTPS route so they do not depend on the unconfigured Account Portal hostname. Clerk validates the invitation ticket; this page does not bypass Waitlist access controls.
+The app embeds Clerk's invitation sign-up component at `/accept-invitation`. For this proxy-only deployment, create invitations with `redirectUrl` set to that HTTPS route so they do not depend on the unconfigured Account Portal hostname. Clerk validates any invitation ticket; this legacy route remains compatible with existing invitations.
 
 The free `nip.io` hostname cannot publish Clerk's requested CNAME records. For this deployment, set the production domain's Frontend API to the proxy URL above. The Express middleware serves that same-origin proxy before authentication and the client receives only the public proxy URL. Configure the proxy in Clerk only after the release is live and `https://inventory.89.167.10.34.nip.io/__clerk` resolves; Clerk validates it before enabling the instance.
 

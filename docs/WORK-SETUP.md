@@ -1,8 +1,8 @@
 # Set up inventory at work
 
-Open **https://inventory.89.167.10.34.nip.io** and bookmark it. This is the shared, hosted inventory app. It works from another computer with an internet connection; the home PC does not need to stay on. During the Clerk migration, new operators use `/sign-up` to request access and an administrator approves them before sign-in. The custom Cloudflare domain is not active yet.
+Open **https://inventory.89.167.10.34.nip.io** and bookmark it. This is the shared, hosted inventory app. It works from another computer with an internet connection; the home PC does not need to stay on. New operators can create their own account at `/sign-up`; no administrator approval is required. Use Google when its button is available, or the email sign-in option. See [Google sign-in status](GOOGLE-SIGN-IN.md). The custom Cloudflare domain is not active yet.
 
-Bring the scanner, its matching USB receiver, its original USB cable, a scale, an empty bin, and a few products with printed barcodes. Have your inventory login available privately. On the configured home PC it is in `private/Inventory Login.txt`; that file is not in GitHub. You can copy `Open Hosted Inventory.url` to the work PC as a shortcut.
+Bring the scanner, its matching USB receiver, its original USB cable, a scale, an empty bin, and a few products with printed barcodes. Use your own Clerk account. The old `private/Inventory Login.txt` is a legacy recovery reference, not the current Clerk login. You can copy `Open Hosted Inventory.url` to the work PC as a shortcut.
 
 No GitHub checkout, Node installation, database transfer, or local server is needed to use the hosted app. `localhost:5015` is only the home PC's hardware test page; it is not the address to use at work.
 
