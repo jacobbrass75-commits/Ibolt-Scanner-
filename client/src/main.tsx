@@ -1884,6 +1884,11 @@ function ClerkAuth() {
                 ? "Create an account to scan parts, record weights, and save warehouse counts."
                 : "Sign in to use the shared inventory, measured weights, and physical counts."}
             </p>
+            <p>
+              <a href="/about.html">About iBOLT Scan</a>
+              {" · "}
+              <a href="/privacy.html">Privacy notice</a>
+            </p>
           </div>
           {invitation ? (
             <SignUp

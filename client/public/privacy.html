@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="How iBOLT Scan uses sign-in information and warehouse inventory records." />
+    <title>Privacy notice — iBOLT Scan</title>
+    <link rel="stylesheet" href="/info.css" />
+  </head>
+  <body>
+    <main>
+      <a class="brand" href="/about.html">iBOLT <span>Scan</span></a>
+      <h1>Privacy notice</h1>
+      <p class="updated">Updated September 14, 2026</p>
+      <p class="lead">iBOLT Scan is a shared warehouse inventory app. This notice explains how account information and inventory activity are used in the app.</p>
+      <section aria-labelledby="account">
+        <h2 id="account">Account and sign-in information</h2>
+        <p>Clerk provides account registration and authentication. The app uses your Clerk user ID, account name or email address, and assigned role to identify you and control access.</p>
+        <p>If you choose Google sign-in, Google provides basic identity information to Clerk, such as your account identifier, name, email address, and profile image. The requested permissions are basic sign-in, email, and profile information. iBOLT Scan does not request access to your Gmail messages, Google Drive files, or contacts.</p>
+        <p>Clerk manages sign-in credentials and uses session cookies or browser storage to keep you signed in. The inventory database does not store your Google password.</p>
+      </section>
+      <section aria-labelledby="records">
+        <h2 id="records">Inventory records and activity</h2>
+        <p>The app stores product details, barcodes, bin labels and locations, measured weights, quantities, notes, import provenance, and count history. Saved counts include the signed-in operator's display name and account identifier. Change history records the account identifier associated with an action.</p>
+        <p>This information supports warehouse operations, identifies who recorded a count, and helps review changes. Inventory and count history are shared with other signed-in users. Registration is currently open, and new accounts receive operator access by default.</p>
+      </section>
+      <section aria-labelledby="services">
+        <h2 id="services">Services and access</h2>
+        <p>The inventory app and its database are hosted on a Hetzner server. Clerk processes account and authentication information, and Google participates when you choose Google sign-in. Administrators can manage inventory access and download database backups. Signed-in users can export inventory records available to them.</p>
+        <p>The app uses account information for authentication and inventory attribution. It does not use Google account information for advertising or sell it.</p>
+      </section>
+      <section aria-labelledby="retention">
+        <h2 id="retention">Records and backups</h2>
+        <p>Inventory records and change history are retained to support ongoing warehouse operations. Backups may contain these records and associated operator information. The automatic backup cleanup removes eligible snapshots older than 30 days while retaining at least the 24 most recent snapshots. Downloaded or separately retained copies may remain longer.</p>
+        <p>Deleting a sign-in account does not automatically delete the warehouse counts, change history, exports, or backups associated with that account.</p>
+      </section>
+      <section aria-labelledby="contact">
+        <h2 id="contact">Questions and requests</h2>
+        <p>For questions about your account, access, or personal information, or to request a correction or deletion, contact Jacob at <a href="mailto:jacobbrass75@gmail.com">jacobbrass75@gmail.com</a>. Requests are reviewed with the need to preserve warehouse records and existing backup copies in mind.</p>
+      </section>
+      <footer>
+        <a href="/about.html">About iBOLT Scan</a>
+        <a href="/sign-in">Sign in</a>
+        <a href="/sign-up">Create an account</a>
+      </footer>
+    </main>
+  </body>
+</html>
