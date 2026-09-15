@@ -1885,10 +1885,10 @@ function ClerkAuth() {
                 : "Sign in to use the shared inventory, measured weights, and physical counts."}
             </p>
             <div className="auth-help" aria-label="Sign-in help">
-              <strong>Use Continue with Google</strong>
+              <strong>Sign in with Google or email</strong>
               <p>
-                Email verification codes are currently unavailable. Choose
-                Google to create your account or sign in.
+                Choose Continue with Google, or use your email address. If asked
+                for an email code, check your inbox and spam folder.
               </p>
               <p>
                 If you opened this link in an email app, open it in Chrome or

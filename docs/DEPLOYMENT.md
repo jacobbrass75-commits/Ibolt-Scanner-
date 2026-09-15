@@ -1,20 +1,26 @@
 # Hosted inventory operations
 
-Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetzner `ubuntu-4gb-hel1-2` server (`89.167.10.34`). No new server was purchased. This is a free IP-based hostname; a custom domain can be added later with a matching certificate and `PUBLIC_ORIGIN` update.
+The canonical inventory URL is **https://iboltscan.com** on the existing Hetzner `ubuntu-4gb-hel1-2` server (`89.167.10.34`). No new server was purchased. The domain was registered through Cloudflare on September 15, 2026. Actual email-code and Google sign-in have loaded the live app on the new domain; verification details are recorded below.
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
 ## Current authentication checkpoint — 2026-09-15
 
-**Use Continue with Google. Email verification codes are currently unavailable.** Production Clerk delivery logs show sender-authentication bounces (`550 5.7.26`, `nip.io` DMARC) and recipient suppression. The same-origin Clerk proxy does not replace mail DNS authentication. Repair the sending domain, resolve suppression, and verify a real email-code signup before restoring email-signup guidance. The sign-in and sign-up pages now direct users to Google and a normal Chrome or Safari browser. Authentication methods and inventory access checks remain enabled. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the failure evidence and recovery requirements.
+`iboltscan.com` is registered and Active in Cloudflare. Apex and `www` DNS are configured, and Clerk verifies all five required CNAME records, including all three email records. The same Clerk production instance has migrated to the new domain; its Frontend API is now `clerk.iboltscan.com` and the Google OAuth callback has been updated. At 17:50 UTC a real verification email reached the owner's inbox; entering its code completed sign-in at 17:51–17:52 UTC with the original administrator role and **Database connected**. A separate Google flow through the account chooser also loaded the canonical inventory with the same administrator role. New-user registration is open but has not been completed end to end for a previously unregistered account. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the current evidence.
 
-Release **3f5f7c2** deployed that guidance on September 15 at 16:41 UTC. Type checking, all 42 tests, and the production build passed on Windows and Linux; the notice was visually checked in a separate static preview with no database access. A verified backup preceded activation. All six table fingerprints and the protected environment were unchanged; the service and hourly backup timer remained active. The Cloudflare account has no registered `iboltscan.com` domain, and public DNS returns NXDOMAIN. A one-year registration checkout is prepared at $10.46, pending the required registrant contact phone number. No purchase or mail-DNS change has been made.
+The migration keeps `inventory.89.167.10.34.nip.io` and `www.iboltscan.com` as redirects to the canonical apex. Retain a valid HTTPS certificate on the old hostname, preserve path and query when redirecting old inventory links, and verify a bookmarked bin-weight URL after activation. The database remains on the same host and path.
+
+### Email-failure checkpoint — earlier on 2026-09-15
+
+Production Clerk delivery logs showed sender-authentication bounces (`550 5.7.26`, `nip.io` DMARC) and recipient suppression. The same-origin Clerk proxy did not replace mail DNS authentication. Release `3f5f7c2` directed users to Google while mail delivery was unavailable. The new sender's verified email-code sign-in supports removing that notice. Inspect logs for any previously suppressed recipient during their next attempt; one successful recipient does not establish that all suppressions are cleared.
+
+Release **3f5f7c2** deployed that guidance on September 15 at 16:41 UTC. Type checking, all 42 tests, and the production build passed on Windows and Linux; the notice was visually checked in a separate static preview with no database access. A verified backup preceded activation. All six table fingerprints and the protected environment were unchanged; the service and hourly backup timer remained active. At that point the custom domain was not yet registered. Registration and DNS setup completed later in the same day's migration.
 
 ### Google activation evidence — 2026-09-14
 
-Release **e1febb0** is live with open Clerk registration, Google sign-in, bounded session recovery, and public app/privacy pages. The original production application was transferred into Jacob's **Ibolt** organization, preserving its keys and existing accounts. Google's audience is External and In production; the actual Google sign-in flow loaded inventory with the owner's existing administrator role. Anonymous inventory APIs still require authentication. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the activation evidence.
+Release **e1febb0** went live with open Clerk registration, Google sign-in, bounded session recovery, and public app/privacy pages. The original production application was transferred into Jacob's **Ibolt** organization, preserving its keys and existing accounts. Google's audience was External and In production; the actual Google sign-in flow loaded inventory with the owner's existing administrator role. Anonymous inventory APIs still require authentication. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the activation evidence.
 
-The `/__clerk` nginx location includes 16 KB response-header buffers after a repeat Google callback exceeded the default and returned 502. The vhost was backed up, `nginx -t` passed, and a graceful reload applied the change. A fresh sign-in succeeded and returned to Bin weights. Keep these settings from `deploy/nginx.conf` when recreating the server; do not remove the same-origin Clerk proxy.
+The former `/__clerk` nginx location used 16 KB response-header buffers after a repeat Google callback exceeded the default and returned 502. The vhost was backed up, `nginx -t` passed, and a graceful reload applied the change. A fresh sign-in succeeded and returned to Bin weights. The new domain uses Clerk's verified Frontend API CNAME instead; the proxy details remain relevant to rollback of the former deployment.
 
 Type checking, all 42 tests and production builds passed locally and on Linux. A verified snapshot preceded deployment. All six table fingerprints and the protected environment were identical before and after activation: 700 products, 17 bins, 19 counts, 1571 audit rows, 4 imports and 116 bin measurements. The service and hourly backup timer are active; the snapshot was verified on the PC too. The previous release remains available for rollback.
 
@@ -75,16 +81,16 @@ The application can use Clerk instead of the local users file. Configure the two
 ```text
 CLERK_PUBLISHABLE_KEY=pk_...
 CLERK_SECRET_KEY=sk_...
-CLERK_PROXY_URL=https://inventory.89.167.10.34.nip.io/__clerk
+PUBLIC_ORIGIN=https://iboltscan.com
 ```
 
-Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publishable key to the browser through `/auth-config`; the secret key stays server-side. Clerk's Express middleware verifies sessions with `authorizedParties` restricted to `PUBLIC_ORIGIN`. Authenticated users default to the `operator` role. Set Clerk public metadata `role` to `admin`, `operator`, or `viewer` when a different role is required.
+Leave `CLERK_PROXY_URL` unset when using the verified `clerk.iboltscan.com` Frontend API. Do not configure `AUTH_USERS_FILE` at the same time. The server exposes the publishable key to the browser through `/auth-config`; the secret key stays server-side. Clerk's Express middleware verifies sessions with `authorizedParties` restricted to `PUBLIC_ORIGIN`. Authenticated users default to the `operator` role. Set Clerk public metadata `role` to `admin`, `operator`, or `viewer` when a different role is required.
 
 In Jacob's Ibolt Clerk organization, set **Access mode** to **Open** and leave the email allowlist disabled. `/sign-up` creates an account directly; no administrator approval is required. Keep email verification enabled. Production Google sign-in requires the dedicated OAuth connection described in [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md).
 
-The app embeds Clerk's invitation sign-up component at `/accept-invitation`. For this proxy-only deployment, create invitations with `redirectUrl` set to that HTTPS route so they do not depend on the unconfigured Account Portal hostname. Clerk validates any invitation ticket; this legacy route remains compatible with existing invitations.
+The app embeds Clerk's invitation sign-up component at `/accept-invitation`. If an invitation is needed, use the canonical HTTPS origin for its redirect. Clerk validates invitation tickets; preserve the legacy route for existing invitation links.
 
-The free `nip.io` hostname cannot publish Clerk's requested CNAME records. For this deployment, set the production domain's Frontend API to the proxy URL above. The Express middleware serves that same-origin proxy before authentication and the client receives only the public proxy URL. Configure the proxy in Clerk only after the release is live and `https://inventory.89.167.10.34.nip.io/__clerk` resolves; Clerk validates it before enabling the instance.
+The former free `nip.io` hostname could not publish Clerk's requested CNAME records. Its proxy solved Frontend API routing but not email sender authentication. The controlled `iboltscan.com` domain uses the five exact CNAME records supplied by the same Clerk production instance. Keep those records verified and preserve the existing instance and accounts when changing domains.
 
 Create a Clerk production instance before replacing live authentication. Build and test a separate release, install both keys into the protected service environment, take a verified inventory backup, and then use the normal reviewed deployment procedure. Do not reuse keys from another Clerk application or put development keys into the live service.
 
