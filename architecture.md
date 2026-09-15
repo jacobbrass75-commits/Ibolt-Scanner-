@@ -14,7 +14,9 @@ The existing **iBolt Inventory** Clerk production application belongs to Jacob's
 
 `server/clerk-proxy.ts` forwards Clerk through `/__clerk` on the inventory origin and preserves every `Set-Cookie` header. Nginx reserves a 16 KB response-header buffer for this route so multi-cookie OAuth callbacks do not fail with 502. The browser receives only the publishable key and public proxy URL from `/auth-config`; the secret key remains on the server. The dedicated Google OAuth web client is configured in Clerk, and the Google audience is External/In production. Public app and privacy disclosures are static files in `client/public`. Current activation evidence is in [docs/GOOGLE-SIGN-IN.md](docs/GOOGLE-SIGN-IN.md).
 
-`client/src/main.tsx` mounts Clerk sign-in and sign-up components and the inventory workspace. `shared/auth-routing.ts` allows returns only to root inventory screens. `shared/clerk-request.ts` waits for a session token and sends it as a Bearer header. An authentication rejection refreshes that token once; persistent rejection opens explicit recovery controls without repeatedly navigating away or clearing open forms. Other failed mutations are never automatically replayed.
+`client/src/main.tsx` mounts Clerk sign-in and sign-up components and the inventory workspace. It directs users to Google while production email delivery is unavailable. The Frontend API proxy does not supply email sender authentication: the September 15 delivery logs confirmed DMARC rejection for the temporary `nip.io` domain. Email-code signup requires a controlled sending domain, verified mail DNS, and a delivery check before it can be advertised as working.
+
+`shared/auth-routing.ts` allows returns only to root inventory screens. `shared/clerk-request.ts` waits for a session token and sends it as a Bearer header. An authentication rejection refreshes that token once; persistent rejection opens explicit recovery controls without repeatedly navigating away or clearing open forms. Other failed mutations are never automatically replayed.
 
 ## Backups and verification
 

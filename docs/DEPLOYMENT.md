@@ -4,7 +4,11 @@ Inventory runs at **https://inventory.89.167.10.34.nip.io** on the existing Hetz
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
-## Current authentication checkpoint — 2026-09-14
+## Current authentication checkpoint — 2026-09-15
+
+**Use Continue with Google. Email verification codes are currently unavailable.** Production Clerk delivery logs show sender-authentication bounces (`550 5.7.26`, `nip.io` DMARC) and recipient suppression. The same-origin Clerk proxy does not replace mail DNS authentication. Repair the sending domain, resolve suppression, and verify a real email-code signup before restoring email-signup guidance. The sign-in and sign-up pages now direct users to Google and a normal Chrome or Safari browser. Authentication methods and inventory access checks remain enabled. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the failure evidence and recovery requirements.
+
+### Google activation evidence — 2026-09-14
 
 Release **e1febb0** is live with open Clerk registration, Google sign-in, bounded session recovery, and public app/privacy pages. The original production application was transferred into Jacob's **Ibolt** organization, preserving its keys and existing accounts. Google's audience is External and In production; the actual Google sign-in flow loaded inventory with the owner's existing administrator role. Anonymous inventory APIs still require authentication. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the activation evidence.
 

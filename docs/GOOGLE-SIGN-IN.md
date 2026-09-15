@@ -1,12 +1,20 @@
 # Open Google sign-in
 
+## Current access status — 2026-09-15
+
+Use **Continue with Google** at `https://inventory.89.167.10.34.nip.io/sign-in` or `/sign-up`. Open the link in a normal Chrome or Safari window if it launches inside an email app. Google signup remains open and the owner's Google login has been verified. Email verification codes are currently unavailable; the presence of an email/password form does not establish that account creation can finish.
+
+On September 15, the production Clerk **Email Logs** confirmed verification-code bounces with SMTP status `550 5.7.26`: unauthenticated mail from `nip.io` was rejected under that domain's DMARC policy. A new-device notification failed for the same reason, and a recipient suppression entry was present. This is a sender-authentication failure, not evidence of an inventory database or Google OAuth failure.
+
+Clerk's same-origin Frontend API proxy makes browser authentication requests work but does not authenticate the production sending domain. Repair email delivery using a domain under the owner's DNS control and Clerk's exact mail records, or a properly configured custom delivery provider. After sender authentication is verified, resolve the provider suppression and test a real email-code signup before describing email signup as operational. Keep email verification and server-side authentication enabled. See Clerk's [email deliverability guide](https://clerk.com/docs/guides/development/troubleshooting/email-deliverability), [proxy documentation](https://clerk.com/docs/guides/dashboard/dns-domains/proxy-fapi), and [Email Logs reference](https://clerk.com/changelog/2026-06-01-email-logs-public-beta).
+
 ## Requested behavior
 
 Anyone may create an account through Google and use inventory as an operator. The owner explicitly authorized open registration on September 14, 2026. Clerk still authenticates sessions; administrator-only operations retain their role checks. Shopify remains read-only.
 
 The original live **iBolt Inventory** application (`app_3IsKD3CMwxmMbH8PouoYGILffVW`) has been transferred from Jacob's Personal workspace into Jacob's **Ibolt** Clerk organization. Its existing production instance remains `ins_3IsLFtOtlFlrMvn1Zt946D4yj9O`. Configure this existing application; the transfer preserves the production application's identity rather than replacing its users or inventory URL. Preserve the owner's administrator access.
 
-## Implementation and activation status
+## Implementation and activation evidence — 2026-09-14
 
 The client now uses Clerk `SignUp` at `/sign-up`, with a normal sign-up link from `/sign-in`. `/accept-invitation` remains supported for existing invitations. Successful authentication returns to a validated inventory screen. Google buttons are supplied by Clerk when its Google connection is enabled; a frontend code change alone cannot enable Google OAuth.
 

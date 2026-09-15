@@ -1,6 +1,8 @@
 # Set up inventory at work
 
-Open **https://inventory.89.167.10.34.nip.io** and bookmark it. This is the shared, hosted inventory app. It works from another computer with an internet connection; the home PC does not need to stay on. New operators can create their own account at `/sign-up`; no administrator approval is required. Use Google when its button is available, or the email sign-in option. See [Google sign-in status](GOOGLE-SIGN-IN.md). The custom Cloudflare domain is not active yet.
+Open **https://inventory.89.167.10.34.nip.io** in Chrome or Safari and bookmark it. If the link opens inside an email app, open it in the browser first. Choose **Continue with Google** to create your account or sign in. **Email verification codes are currently unavailable; use Google instead of waiting for a code.**
+
+This is the shared, hosted inventory app. It works from another computer with an internet connection; the home PC does not need to stay on. New operators can create their own account at `/sign-up`; no administrator approval is required. Use your own Google account each time. See [Google sign-in status](GOOGLE-SIGN-IN.md). The custom Cloudflare domain is not active yet.
 
 Bring the scanner, its matching USB receiver, its original USB cable, a scale, an empty bin, and a few products with printed barcodes. Use your own Clerk account. The old `private/Inventory Login.txt` is a legacy recovery reference, not the current Clerk login. You can copy `Open Hosted Inventory.url` to the work PC as a shortcut.
 
@@ -22,7 +24,7 @@ Use **USB HID Keyboard**, **Real Time Mode**, and an **Enter / Carriage Return**
 
 ## First test at work
 
-1. Open the hosted URL and sign in. In **Scan & count**, click **Test scanner**, then click the scan input so the cursor is visible.
+1. Open the hosted URL in Chrome or Safari and choose **Continue with Google**. In **Scan & count**, click **Test scanner**, then click the scan input so the cursor is visible.
 2. Scan a printed product barcode. The digits should arrive, including leading zeros. If digits arrive but submission does not happen, press Enter. An unknown catalog code still proves the scanner sent data.
 3. If no digits arrive, test the same printed label in a blank Notepad window. A failure there also needs scanner, battery, receiver, or cable troubleshooting. A successful Notepad scan with no app input points to focus or suffix settings; return to the app, click its scan field, and retry.
 4. Find the actual item in **Catalog & weights**. If necessary, assign its exact printed barcode. When a code has multiple matches, compare the description and variant before choosing.

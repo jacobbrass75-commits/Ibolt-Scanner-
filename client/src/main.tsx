@@ -1884,6 +1884,17 @@ function ClerkAuth() {
                 ? "Create an account to scan parts, record weights, and save warehouse counts."
                 : "Sign in to use the shared inventory, measured weights, and physical counts."}
             </p>
+            <div className="auth-help" aria-label="Sign-in help">
+              <strong>Use Continue with Google</strong>
+              <p>
+                Email verification codes are currently unavailable. Choose
+                Google to create your account or sign in.
+              </p>
+              <p>
+                If you opened this link in an email app, open it in Chrome or
+                Safari first.
+              </p>
+            </div>
             <p>
               <a href="/about.html">About iBOLT Scan</a>
               {" · "}

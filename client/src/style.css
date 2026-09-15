@@ -62,6 +62,19 @@ body {
   font-size: 16px;
   line-height: 1.7;
 }
+.auth-help {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-left: 4px solid #247b70;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--dark);
+}
+.auth-help p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
 .auth-brand {
   color: var(--dark);
   font:
