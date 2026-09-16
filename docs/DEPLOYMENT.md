@@ -4,6 +4,14 @@ The canonical inventory URL is **https://iboltscan.com** on the existing Hetzner
 
 The server is the operating database. On the configured PC, `Start Inventory.cmd` reads the private `hosted-url.txt` and opens this address. Do not enter operational counts into the old PC copy. That copy remains preserved for recovery and reconciliation.
 
+## Manual parts and assembled kits — 2026-09-16
+
+Release **a335ddd07fd5ad37b8d6046b8bfcad3108c519ae** activated at approximately 21:59 UTC. It adds **Add part / kit** to the inventory catalog. Type checking, all **47 tests**, and production builds passed on Windows and Linux. Browser creation, duplicate rejection, scanner Enter handling, leading-zero barcode lookup, weight conversion and count preview were verified on a disposable database. No test products, bins or counts were submitted to operating inventory.
+
+A fresh verified online backup immediately preceded activation: `/var/backups/iboltscan/inventory-2026-09-16T21-59-00-014Z-3f233e48.sqlite` with its adjacent JSON manifest (SHA-256 `965bfffcae8ebb4c8a59f72069de70a64db1c8541142db8d3f526579054455a0`). All six table fingerprints were unchanged across deployment: **700 products, 24 bins, 32 counts, 1,578 audit rows, 4 imports and 116 bin measurements**. Schema remains **4**; no migration, environment, nginx, DNS or authentication configuration changes were made. Only the inventory service restarted; the prior `b9ee003` release remains available for code rollback. Preserve any subsequently created operating records during rollback.
+
+Post-deployment Google sign-in returned the existing owner administrator account. The live catalog showed 700 products, 23 active bins and 32 counts; **Add part / kit** opened with the assembled-kit option. HTTPS sign-in returned 200 and anonymous product API access returned 401. Inventory, hourly backups and the certificate timer are active. Activation evidence is under `/var/lib/iboltscan/access/manual-products-20260916/activation-a335ddd07fd5ad37b8d6046b8bfcad3108c519ae-20260916T215859Z-257498`.
+
 ## Current authentication checkpoint — 2026-09-15
 
 `iboltscan.com` is registered and Active in Cloudflare. Apex and `www` DNS are configured, and Clerk verifies all five required CNAME records, including all three email records. The same Clerk production instance has migrated to the new domain; its Frontend API is now `clerk.iboltscan.com` and the Google OAuth callback has been updated. At 17:50 UTC a real verification email reached the owner's inbox; entering its code completed sign-in at 17:51–17:52 UTC with the original administrator role and **Database connected**. A separate Google flow through the account chooser also loaded the canonical inventory with the same administrator role. New-user registration is open but has not been completed end to end for a previously unregistered account. See [GOOGLE-SIGN-IN.md](GOOGLE-SIGN-IN.md) for the current evidence.

@@ -1,6 +1,6 @@
 # Adding parts and assembled kits
 
-Use **Catalog & weights → Add part / kit** to enter a real item that is missing from the catalog. Operators and administrators can add items. This guide describes the feature; deployment is verified separately.
+Open [iBOLT Scan](https://iboltscan.com), then use **Catalog & weights → Add part / kit** to enter a real item that is missing from the catalog. Operators and administrators can add items. Refresh an already-open page if the new button is missing.
 
 An **assembled kit** is a complete kit that you store and count as one item. Its weight must be the weight of the complete assembled kit. Adding or counting a kit does not deduct parts from component inventory.
 
