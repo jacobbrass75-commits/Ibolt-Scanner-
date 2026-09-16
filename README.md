@@ -57,11 +57,12 @@ Use **Bin weights** to review supplied pound measurements and prepare measured b
 
 ## Workflow
 
-1. **Catalog & weights:** find a SKU, weigh one or several identical parts, and save the measured unit weight. Leading zeros in barcodes are preserved. Conflicting or unreadable source weights are left empty for review.
-2. **Bins & labels:** assign a product, location, measured part weight, and measured empty-bin weight. No tare value is assumed. Multiple bins may share a SKU.
-3. **Scan & count:** scan a bin label or exact product barcode/SKU. Choose a bin when multiple match. Enter the total scale reading in ounces, pounds, grams, or kilograms.
-4. Preview, check the result, then save. The server computes `(total ounces - tare ounces) / part ounces`; every count stores its calibration snapshot, rounding mode, notes, operator, and timestamp.
-5. Export catalog, bins, and counts as CSV. Administrators can use **Back up inventory** to download a consistent SQLite snapshot. The server also makes hourly verified backups; `npm run backup` uses `BACKUP_DIR` or a `backups/` directory beside the selected database.
+1. **Catalog & weights:** search for the exact item first. For a new catalog item, **Add part / kit** accepts a required SKU/part number and description, plus an optional barcode, category and measured unit weight. Choose **Part** or **Assembled kit**; each complete assembled kit is counted as one item. Click **Add part** or **Add assembled kit** to save. Creating or counting a kit does not deduct its components. See [Adding parts and assembled kits](docs/ADDING-PARTS-AND-KITS.md).
+2. **Set weight:** weigh one or several identical items and save the measured unit weight. The creation form also accepts a one-item weight in ounces, pounds, grams or kilograms, with a measurement note and confirmation. Leave an unknown weight blank; the item stays **Needs weight**. Leading zeros in barcodes are preserved. Conflicting or unreadable source weights are left empty for review.
+3. **Bins & labels:** assign a product, location, measured unit weight, and measured empty-bin weight. No tare value is assumed. Multiple bins may share a SKU. Adding a catalog item alone does not create a bin or a count.
+4. **Scan & count:** scan a bin label or exact product barcode/SKU. Choose a bin when multiple match. Enter the total scale reading in ounces, pounds, grams, or kilograms.
+5. Preview, check the result, then save only a real physical count. The server computes `(total ounces - tare ounces) / unit ounces`; every count stores its calibration snapshot, rounding mode, notes, operator, and timestamp. A kit's unit weight is the weight of one complete assembled kit.
+6. Export catalog, bins, and counts as CSV. Administrators can use **Back up inventory** to download a consistent SQLite snapshot. The server also makes hourly verified backups; `npm run backup` uses `BACKUP_DIR` or a `backups/` directory beside the selected database.
 
 The scale is read manually; USB barcode scanners should use keyboard/HID mode with Enter or Tab as the suffix. Direct electronic-scale integration is not implemented. Camera scanning requires browser camera access and HTTPS when accessed remotely. Portable QR labels work inside the app and do not embed localhost. When `PUBLIC_ORIGIN` is configured, newly generated labels can link to the server directly.
 
@@ -71,6 +72,7 @@ The scale is read manually; USB barcode scanners should use keyboard/HID mode wi
 - Editing a product weight does not silently change a bin calibration. Existing count snapshots are immutable.
 - Archived bins disappear from active lookup; their history stays available. This version has no count deletion workflow.
 - Product and bin calibration changes have a database audit trail.
+- Manual catalog creation is restricted to operators and administrators, records the creator and original input, and rejects duplicate part numbers or conflicting scan codes. Retrying the same creation request does not add another item or undo a later measurement.
 - SQLite uses WAL and foreign keys. Use the built-in online backup; do not casually copy a live database without its WAL state.
 - There are **no Shopify write calls**. Shopify live synchronization is not configured in this standalone version; catalog import is local and offline.
 - One host/database should become authoritative before multiple devices start operational counting.

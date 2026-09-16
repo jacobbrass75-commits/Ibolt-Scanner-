@@ -61,6 +61,127 @@ export class InventoryStore {
         this.actorId,
       );
   }
+  createProduct(input: {
+    requestId: string;
+    sku: string;
+    title: string;
+    barcode: string;
+    category: string;
+    itemType: "part" | "kit";
+    unitWeightOz?: number | null;
+    weightNote: string;
+  }): Product {
+    return this.db
+      .transaction(() => {
+        const creationInput = {
+          sku: input.sku.trim(),
+          title: input.title.trim(),
+          barcode: input.barcode.trim(),
+          category: input.category.trim(),
+          itemType: input.itemType,
+          unitWeightOz: input.unitWeightOz ?? null,
+          weightNote: input.weightNote.trim(),
+        };
+        if (!creationInput.sku || !creationInput.title)
+          throw new InventoryError("Enter the part number and product name.");
+        if (
+          creationInput.unitWeightOz !== null &&
+          (!Number.isFinite(creationInput.unitWeightOz) ||
+            creationInput.unitWeightOz <= 0 ||
+            creationInput.unitWeightOz > 1e9 ||
+            !creationInput.weightNote)
+        )
+          throw new InventoryError(
+            "Enter a positive measured weight and a note describing the measurement.",
+          );
+        const products = this.products();
+        const existing = products.find(
+          (product) =>
+            product.source.kind === "manual" &&
+            product.source.requestId === input.requestId,
+        );
+        if (existing) {
+          if (
+            existing.source.createdBy !== this.actorId ||
+            JSON.stringify(existing.source.creationInput) !==
+              JSON.stringify(creationInput)
+          )
+            throw new InventoryError(
+              "This product request was already used by another operator or for different inputs. Start a new product entry.",
+              409,
+            );
+          return existing;
+        }
+        if (
+          products.some(
+            (product) =>
+              product.sku.toLowerCase() === creationInput.sku.toLowerCase(),
+          )
+        )
+          throw new InventoryError(
+            "This part number already exists. Open the existing catalog item or use a distinct part number.",
+            409,
+          );
+        const codes = [creationInput.sku, creationInput.barcode].filter(
+          Boolean,
+        );
+        for (const code of codes) {
+          if (normalizeScan(code) !== code || /[\x00-\x1f\x7f]/.test(code))
+            throw new InventoryError(
+              "Use the literal part number or barcode, without a scanner prefix, control characters, or an inventory URL.",
+            );
+          const key = code.toLowerCase();
+          if (
+            products.some((product) =>
+              [product.sku, product.barcode, ...product.aliases].some(
+                (value) => value.toLowerCase() === key,
+              ),
+            ) ||
+            this.bins(true).some(
+              (bin) =>
+                bin.qrCode.toLowerCase() === key ||
+                bin.id.toLowerCase() === key,
+            )
+          )
+            throw new InventoryError(
+              "This part number or barcode belongs to an existing catalog item or bin. Check the label before assigning it.",
+              409,
+            );
+        }
+        const id = randomUUID();
+        const now = new Date().toISOString();
+        const source = {
+          kind: "manual",
+          itemType: creationInput.itemType,
+          createdBy: this.actorId,
+          createdAt: now,
+          requestId: input.requestId,
+          // Keep the original request separate from editable measurements so a
+          // network retry cannot overwrite a product measured after its creation.
+          creationInput,
+        };
+        this.db
+          .prepare(
+            "INSERT INTO products(id,sku,title,barcode,category,unitWeightOz,weightStatus,weightNote,source,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?)",
+          )
+          .run(
+            id,
+            creationInput.sku,
+            creationInput.title,
+            creationInput.barcode,
+            creationInput.category,
+            creationInput.unitWeightOz,
+            creationInput.unitWeightOz === null ? "missing" : "verified",
+            creationInput.weightNote,
+            JSON.stringify(source),
+            now,
+          );
+        const product = this.product(id);
+        this.audit("product_created", id, null, product);
+        return product;
+      })
+      .immediate();
+  }
   updateProduct(
     id: string,
     input: {

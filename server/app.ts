@@ -142,6 +142,26 @@ export function createApp(
     });
   });
   app.get("/api/products", (_req, res) => res.json(store.products()));
+  app.post(
+    "/api/products",
+    requireRole("admin", "operator"),
+    route((req, res) => {
+      const input = z
+        .object({
+          requestId: z.string().uuid(),
+          sku: text.min(1).max(200),
+          title: text.min(1).max(500),
+          barcode: text.max(200).default(""),
+          category: text.max(200).default(""),
+          itemType: z.enum(["part", "kit"]),
+          unitWeightOz: positive.nullable().default(null),
+          weightNote: text.default(""),
+        })
+        .strict()
+        .parse(req.body);
+      res.status(201).json(actingStore(res).createProduct(input));
+    }),
+  );
   app.get("/api/bin-weights", (_req, res) => res.json(binWeights(store)));
   app.post(
     "/api/bin-weights/:id/bin",

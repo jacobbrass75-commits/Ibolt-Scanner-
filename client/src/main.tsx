@@ -132,10 +132,12 @@ function Modal({
   title,
   children,
   close,
+  dismissible = true,
 }: {
   title: string;
   children: React.ReactNode;
   close: () => void;
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -144,10 +146,22 @@ function Modal({
     return () => d.close();
   }, []);
   return (
-    <dialog ref={ref} onCancel={close}>
+    <dialog
+      ref={ref}
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (dismissible) close();
+      }}
+    >
       <div className="modal-head">
         <h2>{title}</h2>
-        <button className="icon" aria-label="Close dialog" onClick={close}>
+        <button
+          className="icon"
+          aria-label="Close dialog"
+          onClick={close}
+          disabled={!dismissible}
+        >
           <X size={20} />
         </button>
       </div>
@@ -265,10 +279,13 @@ function App() {
     } | null>(null),
     [qr, setQr] = useState<Bin | null>(null);
   const [archive, setArchive] = useState<Bin | null>(null);
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [addedProduct, setAddedProduct] = useState<Product | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const canEdit = status?.identity?.role !== "viewer" && !!status;
   const isAdmin = status?.identity?.role === "admin";
+  const canAddProduct = ["admin", "operator"].includes(status?.identity?.role);
   async function reload() {
     const [p, b, c, s] = await Promise.all([
       api<Product[]>("/products"),
@@ -1079,6 +1096,14 @@ function App() {
           ) : tab === "catalog" ? (
             <section className="panel catalog-panel">
               <div className="toolbar">
+                {canAddProduct && (
+                  <button
+                    className="primary add-product-button"
+                    onClick={() => setAddingProduct(true)}
+                  >
+                    <Plus size={17} /> Add part / kit
+                  </button>
+                )}
                 <div className="search">
                   <Search size={18} />
                   <input
@@ -1103,6 +1128,48 @@ function App() {
                   Export
                 </a>
               </div>
+              {addedProduct && canAddProduct && (
+                <div className="new-product-next">
+                  <div>
+                    <strong>{addedProduct.sku} is in the catalog</strong>
+                    <p>
+                      {addedProduct.unitWeightOz != null
+                        ? "Its measured unit weight is saved. Create a bin to start counting."
+                        : "Set its measured unit weight, then create a bin to start counting."}
+                    </p>
+                  </div>
+                  <div className="row-actions">
+                    <button
+                      onClick={() =>
+                        setEditProduct(
+                          products.find((p) => p.id === addedProduct.id) ||
+                            addedProduct,
+                        )
+                      }
+                    >
+                      Set weight
+                    </button>
+                    <button
+                      onClick={() =>
+                        setBinEditor({
+                          product:
+                            products.find((p) => p.id === addedProduct.id) ||
+                            addedProduct,
+                        })
+                      }
+                    >
+                      Create bin
+                    </button>
+                    <button
+                      className="icon"
+                      aria-label="Dismiss new item steps"
+                      onClick={() => setAddedProduct(null)}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="table-caption">
                 {visibleProducts.length} of {products.length} items · Source
                 weights stay flagged until measured here.
@@ -1130,6 +1197,9 @@ function App() {
                         <td>
                           <span className="product-title">{p.title}</span>
                           <small>{p.category}</small>
+                          {p.source.itemType === "kit" && (
+                            <small className="kit-label">Assembled kit</small>
+                          )}
                           {sharedSkus.has(p.sku.toLowerCase()) && (
                             <small>Shared SKU · {catalogIdentity(p)}</small>
                           )}
@@ -1353,6 +1423,33 @@ function App() {
           </footer>
         </main>
       </div>
+      {addingProduct && canAddProduct && (
+        <ProductCreator
+          close={() => setAddingProduct(false)}
+          saved={async (product) => {
+            try {
+              await reload();
+            } catch (error: any) {
+              setProducts((old) => [
+                product,
+                ...old.filter((p) => p.id !== product.id),
+              ]);
+              setError(
+                `The item was added, but the catalog could not refresh: ${error.message}`,
+              );
+            }
+            setFilter("all");
+            setSearch(product.sku);
+            setAddedProduct(product);
+            setAddingProduct(false);
+            setNotice(
+              product.unitWeightOz != null
+                ? `${product.sku} added with its measured weight. Next: create a bin.`
+                : `${product.sku} added. Next: set its weight or create a bin.`,
+            );
+          }}
+        />
+      )}
       {editProduct && (
         <ProductEditor
           product={editProduct}
@@ -1416,6 +1513,249 @@ function App() {
   );
 }
 
+function ProductCreator({
+  close,
+  saved,
+}: {
+  close: () => void;
+  saved: (product: Product) => Promise<void>;
+}) {
+  const [itemType, setItemType] = useState<"part" | "kit">("part");
+  const [sku, setSku] = useState(""),
+    [title, setTitle] = useState("");
+  const [barcode, setBarcode] = useState(""),
+    [category, setCategory] = useState("");
+  const [weight, setWeight] = useState("");
+  const [unit, setUnit] = useState<"oz" | "lb" | "g" | "kg">("oz");
+  const [note, setNote] = useState(""),
+    [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const lock = useRef(false);
+  const attempt = useRef<{ body: string; requestId: string } | null>(null);
+  const hasWeight = weight.trim() !== "";
+  // Match the scale conversions used by the inventory count calculation.
+  const factors = {
+    oz: 1,
+    lb: 16,
+    g: 1 / 28.349523125,
+    kg: 1000 / 28.349523125,
+  };
+  const unitWeightOz = hasWeight ? Number(weight) * factors[unit] : null;
+  const validWeight =
+    !hasWeight ||
+    (Number.isFinite(unitWeightOz) &&
+      unitWeightOz! > 0 &&
+      unitWeightOz! <= 1e9);
+  const valid =
+    !!sku.trim() &&
+    !!title.trim() &&
+    validWeight &&
+    (!hasWeight || (!!note.trim() && confirmed));
+  return (
+    <Modal title="Add part / kit" close={close} dismissible={!busy}>
+      <p>Add a catalog item now. You can measure its unit weight later.</p>
+      <form
+        className="product-create-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (lock.current || !valid) return;
+          lock.current = true;
+          setBusy(true);
+          setError("");
+          const payload = {
+            sku: sku.trim(),
+            title: title.trim(),
+            barcode: barcode.trim(),
+            category: category.trim(),
+            itemType,
+            unitWeightOz,
+            weightNote: hasWeight ? note.trim() : "",
+          };
+          const body = JSON.stringify(payload);
+          if (attempt.current?.body !== body)
+            attempt.current = { body, requestId: crypto.randomUUID() };
+          try {
+            const product = await api<Product>("/products", "POST", {
+              ...payload,
+              requestId: attempt.current.requestId,
+            });
+            await saved(product);
+          } catch (error: any) {
+            setError(error.message);
+          } finally {
+            lock.current = false;
+            setBusy(false);
+          }
+        }}
+      >
+        <fieldset disabled={busy}>
+          <Field label="Item type">
+            <select
+              value={itemType}
+              onChange={(event) => {
+                setItemType(event.target.value as "part" | "kit");
+                setConfirmed(false);
+              }}
+            >
+              <option value="part">Part</option>
+              <option value="kit">Assembled kit</option>
+            </select>
+          </Field>
+          {itemType === "kit" && (
+            <p className="kit-explanation">
+              Count each complete assembled kit as one item. Weigh one complete
+              kit without the bin. Adding or counting a kit leaves component
+              inventory unchanged.
+            </p>
+          )}
+          <Field
+            label="SKU / part number"
+            hint="Use the exact part number printed on the item or label."
+          >
+            <input
+              required
+              maxLength={200}
+              autoFocus
+              autoComplete="off"
+              value={sku}
+              onChange={(event) => setSku(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
+            />
+          </Field>
+          <Field label="Description">
+            <input
+              required
+              maxLength={500}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </Field>
+          <div className="two-fields">
+            <Field
+              label="Printed barcode (optional)"
+              hint="Leading zeros are preserved. SKU scanning also works."
+            >
+              <input
+                type="text"
+                maxLength={200}
+                autoComplete="off"
+                value={barcode}
+                onChange={(event) => setBarcode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
+              />
+            </Field>
+            <Field label="Category (optional)">
+              <input
+                maxLength={200}
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="two-fields">
+            <Field
+              label={
+                itemType === "kit"
+                  ? "One complete kit weight (optional)"
+                  : "One part weight (optional)"
+              }
+              hint="Measured item only, without the bin."
+            >
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0.000000001"
+                step="any"
+                value={weight}
+                onChange={(event) => {
+                  setWeight(event.target.value);
+                  setConfirmed(false);
+                }}
+              />
+            </Field>
+            <Field label="Weight unit">
+              <select
+                value={unit}
+                onChange={(event) => {
+                  setUnit(event.target.value as typeof unit);
+                  setConfirmed(false);
+                }}
+              >
+                <option value="oz">Ounces (oz)</option>
+                <option value="lb">Pounds (lb)</option>
+                <option value="g">Grams (g)</option>
+                <option value="kg">Kilograms (kg)</option>
+              </select>
+            </Field>
+          </div>
+          {hasWeight ? (
+            <>
+              <div className="measurement">
+                Measured unit weight{" "}
+                <strong>
+                  {validWeight
+                    ? number(unitWeightOz, 6)
+                    : "Enter a positive weight"}
+                  {validWeight ? " oz" : ""}
+                </strong>
+              </div>
+              <Field
+                label="Measurement note"
+                hint="Record how you measured this item, such as the scale and included packaging."
+              >
+                <input
+                  required
+                  maxLength={2000}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Scale used, packaging included…"
+                />
+              </Field>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                />
+                I measured one{" "}
+                {itemType === "kit" ? "complete assembled kit" : "part"} and
+                checked the weight and unit.
+              </label>
+            </>
+          ) : (
+            <p className="hint">
+              This item will show Needs weight until you record a measured unit
+              weight.
+            </p>
+          )}
+        </fieldset>
+        {error && (
+          <p className="inline-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="modal-actions">
+          <button type="button" disabled={busy} onClick={close}>
+            Cancel
+          </button>
+          <button className="primary" disabled={busy || !valid}>
+            {busy
+              ? "Adding…"
+              : itemType === "kit"
+                ? "Add assembled kit"
+                : "Add part"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ProductEditor({
   product: p,
   close,
@@ -1425,6 +1765,7 @@ function ProductEditor({
   close: () => void;
   saved: () => Promise<void>;
 }) {
+  const isKit = p.source.itemType === "kit";
   const [weight, setWeight] = useState(p.unitWeightOz?.toString() || ""),
     [sample, setSample] = useState("1");
   const [barcode, setBarcode] = useState(p.barcode),
@@ -1475,11 +1816,21 @@ function ProductEditor({
       >
         <div className="two-fields">
           <Field
-            label="Measured sample weight (oz)"
-            hint="Parts only, without the container."
+            label={
+              isKit
+                ? "Measured kit sample weight (oz)"
+                : "Measured sample weight (oz)"
+            }
+            hint={
+              isKit
+                ? "Complete assembled kits only, without the container."
+                : "Parts only, without the container."
+            }
           >
             <input
-              aria-label="Measured sample weight"
+              aria-label={
+                isKit ? "Measured kit sample weight" : "Measured sample weight"
+              }
               type="number"
               step="any"
               min="0.000001"
@@ -1491,7 +1842,7 @@ function ProductEditor({
               }}
             />
           </Field>
-          <Field label="Parts in sample">
+          <Field label={isKit ? "Complete kits in sample" : "Parts in sample"}>
             <input
               type="number"
               min="1"
@@ -1506,7 +1857,7 @@ function ProductEditor({
           </Field>
         </div>
         <div className="measurement">
-          Unit weight{" "}
+          {isKit ? "Complete-kit unit weight" : "Unit weight"}{" "}
           <strong>
             {Number.isFinite(perPart) && perPart > 0 ? number(perPart, 6) : "—"}{" "}
             oz
@@ -1541,7 +1892,9 @@ function ProductEditor({
             checked={confirmed}
             onChange={(e) => setConfirmed(e.target.checked)}
           />
-          I measured this sample and checked the unit weight.
+          {isKit
+            ? "I measured this sample of complete kits and checked the weight of one complete kit."
+            : "I measured this sample and checked the unit weight."}
         </label>
         <p className="hint">
           Existing bins retain their calibrated weights. Edit a bin separately
@@ -1584,6 +1937,7 @@ function BinEditor({
   close: () => void;
   saved: (b: Bin) => Promise<void>;
 }) {
+  const isKit = p.source.itemType === "kit";
   const [label, setLabel] = useState(bin?.binLabel || `${p.sku} — Main bin`),
     [weight, setWeight] = useState(
       (bin?.unitWeightOz ?? p.unitWeightOz)?.toString() || "",
@@ -1648,7 +2002,16 @@ function BinEditor({
           />
         </Field>
         <div className="two-fields">
-          <Field label="Individual part weight (oz)">
+          <Field
+            label={
+              isKit
+                ? "One complete kit weight (oz)"
+                : "Individual part weight (oz)"
+            }
+            hint={
+              isKit ? "One complete assembled kit, without the bin." : undefined
+            }
+          >
             <input
               required
               type="number"
@@ -1687,7 +2050,9 @@ function BinEditor({
             checked={confirmed}
             onChange={(e) => setConfirmed(e.target.checked)}
           />
-          I checked the part weight and empty bin weight.
+          {isKit
+            ? "I checked the complete-kit weight and empty bin weight."
+            : "I checked the part weight and empty bin weight."}
         </label>
         {error && (
           <p className="inline-error" role="alert">

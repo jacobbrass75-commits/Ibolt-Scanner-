@@ -35,6 +35,15 @@ Use **USB HID Keyboard**, **Real Time Mode**, and an **Enter / Carriage Return**
 
 All hosted users work on the same catalog and counts. Use your own account, and sign out when finished on a shared computer. Hourly server backups continue while the home PC is off; the existing additional backup copy to that PC resumes when it is online.
 
+## Add a missing part or assembled kit
+
+1. Search **Catalog & weights** first. When **Add part / kit** is available, open it and choose **Part** or **Assembled kit**. Enter the actual SKU/part number and description. Barcode and category are optional; keep leading zeros.
+2. Leave an unknown weight blank. If you have measured one item without the bin, enter its weight, choose the scale's unit, add a measurement note and check the confirmation. For a kit, weigh one complete assembled kit.
+3. Click **Add part** or **Add assembled kit**. Use **Set weight** if a measurement is still needed, then **Create bin** with the correct unit weight, measured empty-bin weight and location.
+4. Scan the item and preview the actual bin's count before saving. Each assembled kit counts as one item; component inventory is not deducted automatically. Creating the catalog entry itself creates no bin or stock count.
+
+See [Adding parts and assembled kits](ADDING-PARTS-AND-KITS.md) for the complete guide, duplicate-code handling and a practice checklist. Use actual inventory in the shared system; demonstration names and screenshot examples are made up.
+
 ## Source code
 
 The repository is [jacobbrass75-commits/Ibolt-Scanner-](https://github.com/jacobbrass75-commits/Ibolt-Scanner-). GitHub contains source code and setup instructions, not the live inventory, passwords, or private exports. Pushing source does not move the operating database or change the hosted URL.

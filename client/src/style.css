@@ -1065,6 +1065,48 @@ dialog details p {
   color: #ad522c;
   font-size: 12px;
 }
+.add-product-button {
+  white-space: nowrap;
+}
+.new-product-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 22px 18px;
+  padding: 15px;
+  border: 1px solid #c6dfd1;
+  border-radius: 8px;
+  background: #f0f7f3;
+  font-size: 12px;
+}
+.new-product-next p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.kit-label {
+  color: #28674d;
+  font-weight: 600;
+}
+.kit-explanation {
+  background: #f0f7f3;
+  border-left: 3px solid #46896c;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+@media (max-width: 520px) {
+  .product-create-form .two-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .new-product-next {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+}
 .print-label {
   text-align: center;
   border: 1px solid #d9dfe5;
